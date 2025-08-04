@@ -5,9 +5,11 @@ class RestaurantModel {
   final double latitude;
   final double longitude;
   final String ownerId;
-  final String cuisine;
+  final List<String>
+      cuisines; // Change to List<String> to allow multiple cuisines
   final String imageUrl;
   final double averageRating;
+  final double priceRange;
 
   RestaurantModel({
     required this.id,
@@ -16,11 +18,13 @@ class RestaurantModel {
     required this.latitude,
     required this.longitude,
     required this.ownerId,
-    required this.cuisine,
+    required this.cuisines,
     required this.imageUrl,
     required this.averageRating,
+    required this.priceRange,
   });
 
+  // Convert RestaurantModel instance to Firestore-friendly Map
   Map<String, dynamic> toMap() {
     return {
       'id': id,
@@ -29,12 +33,14 @@ class RestaurantModel {
       'latitude': latitude,
       'longitude': longitude,
       'ownerId': ownerId,
-      'cuisine': cuisine,
+      'cuisines': cuisines, // Save cuisines as a list
       'imageUrl': imageUrl,
       'averageRating': averageRating,
+      'priceRange': priceRange,
     };
   }
 
+  // Convert Firestore data into a RestaurantModel object
   factory RestaurantModel.fromMap(Map<String, dynamic> map) {
     return RestaurantModel(
       id: map['id'] ?? '',
@@ -43,9 +49,10 @@ class RestaurantModel {
       latitude: map['latitude']?.toDouble() ?? 0.0,
       longitude: map['longitude']?.toDouble() ?? 0.0,
       ownerId: map['ownerId'] ?? '',
-      cuisine: map['cuisine'] ?? '',
+      cuisines: List<String>.from(map['cuisines'] ?? []),
       imageUrl: map['imageUrl'] ?? '',
       averageRating: map['averageRating']?.toDouble() ?? 0.0,
+      priceRange: map['priceRange']?.toDouble() ?? 0.0,
     );
   }
 }

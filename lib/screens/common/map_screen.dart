@@ -12,7 +12,8 @@ class MapSearchScreen extends StatefulWidget {
 
 class _MapSearchScreenState extends State<MapSearchScreen> {
   late GoogleMapController _mapController;
-  final _googlePlace = GooglePlace("AIzaSyCoQzkmzecrFnHY1vSeJiRdiG4YILWKK2Y");
+  // final _googlePlace = GooglePlace("AIzaSyCoQzkmzecrFnHY1vSeJiRdiG4YILWKK2Y");
+  final _googlePlace = GooglePlace("AlzaSyRM3tIJP7LCerIthSbcle0QuQB3Yv87erR");
   final TextEditingController _searchController = TextEditingController();
   List<AutocompletePrediction> _predictions = [];
   LatLng _initialPosition = const LatLng(23.8103, 90.4125); // Dhaka
