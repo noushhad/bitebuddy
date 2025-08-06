@@ -1,63 +1,33 @@
-// class UserModel {
-//   final String uid;
-//   final String email;
-//   final String userType; // 'customer' or 'owner'
-
-//   UserModel({
-//     required this.uid,
-//     required this.email,
-//     required this.userType,
-//   });
-
-//   Map<String, dynamic> toMap() {
-//     return {
-//       'uid': uid,
-//       'email': email,
-//       'userType': userType,
-//     };
-//   }
-
-//   factory UserModel.fromMap(Map<String, dynamic> map) {
-//     return UserModel(
-//       uid: map['uid'],
-//       email: map['email'],
-//       userType: map['userType'],
-//     );
-//   }
-// }
-
 class UserModel {
   final String uid;
   final String email;
   final String userType; // 'customer' or 'owner'
-  final List<String>
-      preferences; // A list of cuisine preferences (for customers)
+  final List<String> preferences;
 
   UserModel({
     required this.uid,
     required this.email,
     required this.userType,
-    this.preferences = const [], // Default to an empty list if not set
+    this.preferences = const [],
   });
 
-  // Convert UserModel object to Firestore-friendly data (Map)
+  // Convert UserModel to Map for Supabase insert/update
   Map<String, dynamic> toMap() {
     return {
       'uid': uid,
       'email': email,
-      'userType': userType,
-      'preferences': preferences, // Store the preferences as an array
+      'user_type': userType,
+      'preferences': preferences,
     };
   }
 
-  // Convert Firestore data to a UserModel object
+  // Create UserModel from Supabase response map
   factory UserModel.fromMap(Map<String, dynamic> map) {
     return UserModel(
       uid: map['uid'],
       email: map['email'],
-      userType: map['userType'],
-      preferences: List<String>.from(
-          map['preferences'] ?? []), // Parse preferences as a List<String>
+      userType: map['user_type'],
+      preferences: List<String>.from(map['preferences'] ?? []),
     );
   }
 }

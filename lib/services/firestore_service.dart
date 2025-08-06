@@ -1,21 +1,3 @@
-// import 'package:cloud_firestore/cloud_firestore.dart';
-// import '../models/restaurant_model.dart';
-
-// class FirestoreService {
-//   final FirebaseFirestore _db = FirebaseFirestore.instance;
-
-//   Future<List<RestaurantModel>> getRecommendedRestaurants() async {
-//     final snapshot = await _db
-//         .collection('restaurants')
-//         .where('isRecommended', isEqualTo: true)
-//         .get();
-
-//     return snapshot.docs
-//         .map((doc) => RestaurantModel.fromMap(doc.id, doc.data()))
-//         .toList();
-//   }
-// }
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/restaurant_model.dart';
 

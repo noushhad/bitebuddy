@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../services/auth_service.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -11,12 +12,13 @@ class RegisterScreen extends StatefulWidget {
 class _RegisterScreenState extends State<RegisterScreen> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-  String _selectedUserType = 'customer'; // default
+  String _selectedUserType = 'customer';
 
   bool _isLoading = false;
 
   void _register() async {
     setState(() => _isLoading = true);
+
     try {
       await AuthService().registerUser(
         _emailController.text.trim(),
@@ -25,10 +27,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
       );
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Registration Successful")),
+        const SnackBar(content: Text("Registration Successful")),
       );
 
-      Navigator.pop(context); // Go back to login
+      if (context.mounted) await _redirectBasedOnRole(context);
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("Error: $e")),
@@ -38,34 +40,63 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
   }
 
+  Future<void> _redirectBasedOnRole(BuildContext context) async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) {
+      Navigator.pushNamedAndRemoveUntil(context, '/login', (r) => false);
+      return;
+    }
+
+    final data = await Supabase.instance.client
+        .from('users')
+        .select('user_type')
+        .eq('uid', user.id)
+        .maybeSingle();
+
+    final type = data?['user_type'];
+
+    if (type == 'owner') {
+      Navigator.pushNamedAndRemoveUntil(
+          context, '/owner/dashboard', (r) => false);
+    } else {
+      Navigator.pushNamedAndRemoveUntil(
+          context, '/customer/home', (r) => false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text("Register")),
+      appBar: AppBar(title: const Text("Register")),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           children: [
             TextField(
-                controller: _emailController,
-                decoration: InputDecoration(labelText: "Email")),
+              controller: _emailController,
+              decoration: const InputDecoration(labelText: "Email"),
+            ),
             TextField(
-                controller: _passwordController,
-                decoration: InputDecoration(labelText: "Password"),
-                obscureText: true),
+              controller: _passwordController,
+              decoration: const InputDecoration(labelText: "Password"),
+              obscureText: true,
+            ),
+            const SizedBox(height: 12),
             DropdownButton<String>(
               value: _selectedUserType,
-              onChanged: (value) => setState(() => _selectedUserType = value!),
-              items: [
+              onChanged: (value) =>
+                  setState(() => _selectedUserType = value ?? 'customer'),
+              items: const [
                 DropdownMenuItem(value: 'customer', child: Text('Customer')),
                 DropdownMenuItem(
                     value: 'owner', child: Text('Restaurant Owner')),
               ],
             ),
-            SizedBox(height: 20),
+            const SizedBox(height: 20),
             _isLoading
-                ? CircularProgressIndicator()
-                : ElevatedButton(onPressed: _register, child: Text("Register")),
+                ? const CircularProgressIndicator()
+                : ElevatedButton(
+                    onPressed: _register, child: const Text("Register")),
           ],
         ),
       ),

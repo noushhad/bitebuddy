@@ -1,8 +1,7 @@
-// lib/screens/common/feed_screen.dart
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:geolocator/geolocator.dart';
+
 import '../../services/location_service.dart';
 import '../../services/places_service.dart';
 import '../../widgets/restaurant_card.dart';
@@ -16,7 +15,7 @@ class FeedScreen extends StatefulWidget {
 }
 
 class _FeedScreenState extends State<FeedScreen> {
-  final _firestore = FirebaseFirestore.instance;
+  final _supabase = Supabase.instance.client;
   final _placesService = PlacesService();
   final _locationService = LocationService();
 
@@ -33,44 +32,47 @@ class _FeedScreenState extends State<FeedScreen> {
   Future<void> _loadFeed() async {
     final position = await _locationService.getCurrentLocation();
 
-    // Firestore restaurants
-    final firestoreData = await _firestore.collection('restaurants').get();
-    final firestoreList =
-        firestoreData.docs.map((doc) => {'id': doc.id, ...doc.data()}).toList();
+    // 🔁 Load restaurants from Supabase
+    final supabaseRestaurants = await _supabase
+        .from('restaurants')
+        .select()
+        .limit(20); // limit for performance
 
-    // Google Places restaurants
+    final supabaseList = List<Map<String, dynamic>>.from(supabaseRestaurants);
+
+    // 🌐 Load from Google Places
     final placesList = await _placesService.searchNearbyRestaurants(
       lat: position.latitude,
       lng: position.longitude,
       keyword: '',
     );
 
-    // Mix up to 5 from both
-    final allRestaurants = [...firestoreList, ...placesList];
+    // 🔀 Mix top 5
+    final allRestaurants = [...supabaseList, ...placesList];
+
     allRestaurants.shuffle();
     final topCombined = allRestaurants.take(5).toList();
 
-    // Load promotions/posts from Firestore restaurants
-    final List<Map<String, dynamic>> posts = [];
-    for (final r in firestoreList) {
-      final postQuery = await _firestore
-          .collection('restaurants')
-          .doc(r['id'])
-          .collection('posts')
-          .orderBy('createdAt', descending: true)
-          .get();
+    // 📣 Load latest posts from Supabase
+    final postsQuery = await _supabase
+        .from('posts')
+        .select('*, restaurants(*)')
+        .order('created_at', ascending: false)
+        .limit(20);
 
-      final postList = postQuery.docs.map((d) => {
-            ...d.data(),
-            'restaurant': r,
-          });
+    final posts = List<Map<String, dynamic>>.from(postsQuery);
 
-      posts.addAll(postList);
-    }
+    // Add parent restaurant into each post
+    final formattedPosts = posts.map((p) {
+      return {
+        ...p,
+        'restaurant': p['restaurants'],
+      };
+    }).toList();
 
     setState(() {
       _topRestaurants = topCombined;
-      _postSections = posts;
+      _postSections = formattedPosts;
       _isLoading = false;
     });
   }
@@ -117,9 +119,9 @@ class _FeedScreenState extends State<FeedScreen> {
                 ..._postSections.map((p) => Card(
                       margin: const EdgeInsets.symmetric(vertical: 8),
                       child: ListTile(
-                        leading: p['imageUrl'] != null
+                        leading: p['image_url'] != null
                             ? Image.network(
-                                p['imageUrl'],
+                                p['image_url'],
                                 width: 60,
                                 height: 60,
                                 fit: BoxFit.cover,

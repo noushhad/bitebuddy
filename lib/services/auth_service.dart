@@ -1,28 +1,24 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/user_model.dart';
 
 class AuthService {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final SupabaseClient _supabase = Supabase.instance.client;
 
   Future<User?> registerUser(
       String email, String password, String userType) async {
     try {
-      UserCredential userCred = await _auth.createUserWithEmailAndPassword(
+      final response = await _supabase.auth.signUp(
         email: email,
         password: password,
+        data: {'user_type': userType}, // optional if you use auth metadata
       );
 
-      User? user = userCred.user;
-
+      final user = response.user;
       if (user != null) {
-        UserModel newUser = UserModel(
-          uid: user.uid,
-          email: email,
-          userType: userType,
-        );
-        await _firestore.collection('users').doc(user.uid).set(newUser.toMap());
+        // Store user details in 'users' table
+        final newUser =
+            UserModel(uid: user.id, email: email, userType: userType);
+        await _supabase.from('users').insert(newUser.toMap());
       }
 
       return user;
@@ -33,11 +29,11 @@ class AuthService {
 
   Future<User?> loginUser(String email, String password) async {
     try {
-      UserCredential userCred = await _auth.signInWithEmailAndPassword(
+      final response = await _supabase.auth.signInWithPassword(
         email: email,
         password: password,
       );
-      return userCred.user;
+      return response.user;
     } catch (e) {
       rethrow;
     }
@@ -45,10 +41,11 @@ class AuthService {
 
   Future<UserModel?> getUserDetails(String uid) async {
     try {
-      DocumentSnapshot doc =
-          await _firestore.collection('users').doc(uid).get();
-      if (doc.exists) {
-        return UserModel.fromMap(doc.data() as Map<String, dynamic>);
+      final response =
+          await _supabase.from('users').select().eq('uid', uid).single();
+
+      if (response != null) {
+        return UserModel.fromMap(response);
       }
     } catch (e) {
       rethrow;
@@ -57,8 +54,8 @@ class AuthService {
   }
 
   Future<void> logout() async {
-    await _auth.signOut();
+    await _supabase.auth.signOut();
   }
 
-  Stream<User?> get authStateChanges => _auth.authStateChanges();
+  Stream<AuthState> get authStateChanges => _supabase.auth.onAuthStateChange;
 }

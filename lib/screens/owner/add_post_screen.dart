@@ -1,9 +1,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
 
 class AddPostScreen extends StatefulWidget {
   const AddPostScreen({super.key});
@@ -14,8 +13,7 @@ class AddPostScreen extends StatefulWidget {
 
 class _AddPostScreenState extends State<AddPostScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _auth = FirebaseAuth.instance;
-  final _firestore = FirebaseFirestore.instance;
+  final _supabase = Supabase.instance.client;
 
   String _title = '';
   String _description = '';
@@ -34,18 +32,17 @@ class _AddPostScreenState extends State<AddPostScreen> {
   }
 
   Future<String> _uploadImage(String postId) async {
-    final ref = FirebaseStorage.instance
-        .ref()
-        .child('post_images')
-        .child('$postId.jpg');
+    final bytes = await _imageFile!.readAsBytes();
+    final fileExt = _imageFile!.path.split('.').last;
+    final filePath = '$postId.$fileExt';
 
-    print('Uploading image for postId: $postId'); // Debugging line
+    final response = await _supabase.storage.from('post-images').uploadBinary(
+        filePath, bytes,
+        fileOptions: const FileOptions(upsert: true));
 
-    await ref.putFile(_imageFile!);
-    final imageUrl = await ref.getDownloadURL();
-    print('Image URL: $imageUrl'); // Debugging line
-
-    return imageUrl;
+    final publicUrl =
+        _supabase.storage.from('post-images').getPublicUrl(filePath);
+    return publicUrl;
   }
 
   Future<void> _submitPost() async {
@@ -60,26 +57,38 @@ class _AddPostScreenState extends State<AddPostScreen> {
     _formKey.currentState!.save();
     setState(() => _isLoading = true);
 
-    final ownerId = _auth.currentUser!.uid;
-    final postRef =
-        _firestore.collection('restaurants').doc(ownerId).collection('posts');
-    final newPostRef = postRef.doc(); // generate new post ID
-
     try {
-      final imageUrl = await _uploadImage(newPostRef.id);
+      final ownerId = _supabase.auth.currentUser?.id;
+      if (ownerId == null) throw 'User not logged in';
 
-      await newPostRef.set({
+      // Get restaurant ID by owner
+      final restaurantData = await _supabase
+          .from('restaurants')
+          .select('id')
+          .eq('owner_id', ownerId)
+          .maybeSingle();
+
+      if (restaurantData == null) throw 'No restaurant found for user';
+      final restaurantId = restaurantData['id'];
+
+      final postId = const Uuid().v4();
+      final imageUrl = await _uploadImage(postId);
+
+      await _supabase.from('posts').insert({
+        'id': postId,
         'title': _title,
         'description': _description,
-        'imageUrl': imageUrl,
-        'createdAt': FieldValue.serverTimestamp(),
+        'image_url': imageUrl,
+        'restaurant_id': restaurantId,
       });
 
       setState(() => _isLoading = false);
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Post added.')),
-      );
+      if (context.mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Post added.')),
+        );
+      }
     } catch (e) {
       setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(

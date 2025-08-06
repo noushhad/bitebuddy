@@ -1,12 +1,11 @@
-// lib/screens/customer/search_screen.dart
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:geolocator/geolocator.dart';
+
 import '../../services/location_service.dart';
 import '../../services/places_service.dart';
 import '../../widgets/restaurant_card.dart';
-import 'restaurant_detail_screen.dart';
+import '../customer/restaurant_detail_screen.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -19,10 +18,9 @@ class _SearchScreenState extends State<SearchScreen> {
   final _placesService = PlacesService();
   final _locationService = LocationService();
   final _searchController = TextEditingController();
-  final _firestore = FirebaseFirestore.instance;
-  final _auth = FirebaseAuth.instance;
+  final _supabase = Supabase.instance.client;
 
-  List<Map<String, dynamic>> _firestoreRestaurants = [];
+  List<Map<String, dynamic>> _supabaseRestaurants = [];
   List<Map<String, dynamic>> _placesRestaurants = [];
   List<String> _favoriteIds = [];
   bool _isLoading = false;
@@ -51,12 +49,16 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   Future<void> _loadFavorites() async {
-    final uid = _auth.currentUser?.uid;
+    final uid = _supabase.auth.currentUser?.id;
     if (uid == null) return;
-    final userDoc = await _firestore.collection('users').doc(uid).get();
-    final favorites = List<String>.from(userDoc.data()?['favorites'] ?? []);
+
+    final response = await _supabase
+        .from('favorites')
+        .select('restaurant_id')
+        .eq('uid', uid);
+
     setState(() {
-      _favoriteIds = favorites;
+      _favoriteIds = List<String>.from(response.map((f) => f['restaurant_id']));
     });
   }
 
@@ -64,30 +66,27 @@ class _SearchScreenState extends State<SearchScreen> {
     setState(() {
       _isLoading = true;
       _placesRestaurants = [];
-      _firestoreRestaurants = [];
+      _supabaseRestaurants = [];
     });
 
     try {
       final position = await _locationService.getCurrentLocation();
 
-      // Firestore filter by cuisine tag and keyword
-      final firestoreQuery = _firestore.collection('restaurants');
-      QuerySnapshot querySnapshot;
+      // 🔎 Supabase filter
+      String query = 'ilike(name, "%$keyword%")';
       if (_selectedCuisine.isNotEmpty) {
-        querySnapshot = await firestoreQuery
-            .where('tags', arrayContains: _selectedCuisine)
-            .get();
-      } else {
-        querySnapshot = await firestoreQuery.get();
+        query +=
+            ' & tags.cs.{"$_selectedCuisine"}'; // tags contains selected cuisine
       }
 
-      final filteredFirestore = querySnapshot.docs
-          .map((doc) => {'id': doc.id, ...doc.data() as Map<String, dynamic>})
-          .where((r) => r['name']
-              .toString()
-              .toLowerCase()
-              .contains(keyword.toLowerCase()))
-          .toList();
+      final restaurantResponse = await _supabase
+          .from('restaurants')
+          .select()
+          .textSearch('name', keyword)
+          .limit(50);
+
+      final filteredSupabase =
+          List<Map<String, dynamic>>.from(restaurantResponse);
 
       final placesResults = await _placesService.searchNearbyRestaurants(
         lat: position.latitude,
@@ -99,7 +98,7 @@ class _SearchScreenState extends State<SearchScreen> {
       );
 
       setState(() {
-        _firestoreRestaurants = filteredFirestore;
+        _supabaseRestaurants = filteredSupabase;
         _placesRestaurants = placesResults;
       });
     } catch (e) {
@@ -113,14 +112,22 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   Future<void> _toggleFavorite(String restaurantId) async {
-    final uid = _auth.currentUser?.uid;
-    final userRef = _firestore.collection('users').doc(uid);
+    final uid = _supabase.auth.currentUser?.id;
+    if (uid == null) return;
+
     final isFav = _favoriteIds.contains(restaurantId);
-    await userRef.update({
-      'favorites': isFav
-          ? FieldValue.arrayRemove([restaurantId])
-          : FieldValue.arrayUnion([restaurantId])
-    });
+    if (isFav) {
+      await _supabase
+          .from('favorites')
+          .delete()
+          .match({'uid': uid, 'restaurant_id': restaurantId});
+    } else {
+      await _supabase.from('favorites').insert({
+        'uid': uid,
+        'restaurant_id': restaurantId,
+      });
+    }
+
     await _loadFavorites();
   }
 
@@ -169,7 +176,7 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   Widget _buildRestaurantSection(String title, List<Map<String, dynamic>> list,
-      {bool fromFirestore = false}) {
+      {bool fromSupabase = false}) {
     if (list.isEmpty) return const SizedBox();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -187,7 +194,7 @@ class _SearchScreenState extends State<SearchScreen> {
           itemCount: list.length,
           itemBuilder: (context, index) {
             final r = list[index];
-            final id = fromFirestore ? r['id'] : r['place_id'] ?? r['name'];
+            final id = fromSupabase ? r['id'] : r['place_id'] ?? r['name'];
             return RestaurantCard(
               name: r['name'] ?? 'Unnamed',
               address: r['address'] ?? r['vicinity'] ?? '',
@@ -240,8 +247,8 @@ class _SearchScreenState extends State<SearchScreen> {
               child: Column(
                 children: [
                   _buildRestaurantSection(
-                      'Top Picks from App', _firestoreRestaurants,
-                      fromFirestore: true),
+                      'Top Picks from App', _supabaseRestaurants,
+                      fromSupabase: true),
                   _buildRestaurantSection(
                       'Nearby Restaurants', _placesRestaurants),
                 ],

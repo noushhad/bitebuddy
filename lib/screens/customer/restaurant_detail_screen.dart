@@ -1,6 +1,6 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:bitebuddy/screens/customer/reservation_screen.dart';
 
 class RestaurantDetailScreen extends StatefulWidget {
   final Map<String, dynamic> restaurant;
@@ -12,62 +12,89 @@ class RestaurantDetailScreen extends StatefulWidget {
 }
 
 class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
-  final _firestore = FirebaseFirestore.instance;
-  final _auth = FirebaseAuth.instance;
+  final _supabase = Supabase.instance.client;
 
   bool _isFavorite = false;
   List<Map<String, dynamic>> _menuItems = [];
 
-  bool get isFirestoreRestaurant => widget.restaurant.containsKey('ownerId');
+  bool get isSupabaseRestaurant => widget.restaurant.containsKey('owner_id');
   String get restaurantId =>
       widget.restaurant['id'] ?? widget.restaurant['place_id'] ?? '';
 
   @override
   void initState() {
     super.initState();
-    if (isFirestoreRestaurant) _loadMenu();
+    if (isSupabaseRestaurant) _loadMenu();
     _checkFavorite();
   }
 
   Future<void> _loadMenu() async {
-    final query = await _firestore
-        .collection('restaurants')
-        .doc(restaurantId)
-        .collection('menuItems')
-        .get();
+    final result = await _supabase
+        .from('menu_items')
+        .select()
+        .eq('restaurant_id', restaurantId);
 
     setState(() {
-      _menuItems = query.docs.map((doc) => doc.data()).toList();
+      _menuItems = List<Map<String, dynamic>>.from(result);
     });
   }
 
   Future<void> _checkFavorite() async {
-    final uid = _auth.currentUser!.uid;
-    final doc = await _firestore.collection('users').doc(uid).get();
-    final favs = List<String>.from(doc['favorites'] ?? []);
+    final uid = _supabase.auth.currentUser?.id;
+    if (uid == null) return;
+
+    final response = await _supabase
+        .from('favorites')
+        .select()
+        .eq('uid', uid)
+        .eq('restaurant_id', restaurantId);
+
     setState(() {
-      _isFavorite = favs.contains(restaurantId);
+      _isFavorite = response.isNotEmpty;
     });
   }
 
   Future<void> _toggleFavorite() async {
-    final uid = _auth.currentUser!.uid;
-    final ref = _firestore.collection('users').doc(uid);
-    await ref.update({
-      'favorites': _isFavorite
-          ? FieldValue.arrayRemove([restaurantId])
-          : FieldValue.arrayUnion([restaurantId])
-    });
-    setState(() {
-      _isFavorite = !_isFavorite;
-    });
+    final uid = _supabase.auth.currentUser?.id;
+    if (uid == null) return;
+
+    if (_isFavorite) {
+      await _supabase
+          .from('favorites')
+          .delete()
+          .match({'uid': uid, 'restaurant_id': restaurantId});
+    } else {
+      await _supabase.from('favorites').insert({
+        'uid': uid,
+        'restaurant_id': restaurantId,
+      });
+    }
+
+    setState(() => _isFavorite = !_isFavorite);
   }
 
+  // void _makeReservation() {
+  //   Navigator.pushNamed(
+  //     context,
+  //     '/customer/reserve',
+  //     arguments: restaurantId,
+  //   );
+  // }
   void _makeReservation() {
-    // You can replace this with actual reservation screen
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Reservation feature coming soon!')),
-    );
+    if (isSupabaseRestaurant) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ReservationScreen(restaurantId: restaurantId),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text(
+                'Reservations only available for BiteBuddy partner restaurants.')),
+      );
+    }
   }
 
   @override
@@ -129,7 +156,7 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
           const SizedBox(height: 16),
           Text(description),
           const SizedBox(height: 20),
-          if (isFirestoreRestaurant) ...[
+          if (isSupabaseRestaurant) ...[
             const Text('Menu',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
@@ -137,8 +164,8 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
               const Text('No menu items available.')
             else
               ..._menuItems.map((item) => ListTile(
-                    leading: item['imageUrl'] != null
-                        ? Image.network(item['imageUrl'],
+                    leading: item['image_url'] != null
+                        ? Image.network(item['image_url'],
                             width: 50, height: 50, fit: BoxFit.cover)
                         : const Icon(Icons.fastfood),
                     title: Text(item['name'] ?? ''),

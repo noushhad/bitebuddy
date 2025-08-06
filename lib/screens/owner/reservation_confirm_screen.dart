@@ -1,5 +1,5 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ReservationConfirmScreen extends StatefulWidget {
   const ReservationConfirmScreen({super.key});
@@ -10,71 +10,105 @@ class ReservationConfirmScreen extends StatefulWidget {
 }
 
 class _ReservationConfirmScreenState extends State<ReservationConfirmScreen> {
-  final _firestore = FirebaseFirestore.instance;
-  final String _restaurantId = "your_restaurant_id"; // TODO: fetch dynamically
+  final _supabase = Supabase.instance.client;
+  String? _restaurantId;
 
-  Future<void> _updateStatus(String reservationId, String status) async {
-    await _firestore.collection('reservations').doc(reservationId).update({
-      'status': status,
-    });
+  @override
+  void initState() {
+    super.initState();
+    _loadRestaurantId();
   }
 
-  Stream<QuerySnapshot> _getPendingReservations() {
-    return _firestore
-        .collection('reservations')
-        .where('restaurantId', isEqualTo: _restaurantId)
-        .where('status', isEqualTo: 'pending')
-        .snapshots();
+  Future<void> _loadRestaurantId() async {
+    final uid = _supabase.auth.currentUser?.id;
+    if (uid == null) return;
+
+    final response = await _supabase
+        .from('restaurants')
+        .select('id')
+        .eq('owner_id', uid)
+        .maybeSingle();
+
+    if (response != null && response['id'] != null) {
+      setState(() {
+        _restaurantId = response['id'] as String;
+      });
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchReservations() async {
+    if (_restaurantId == null) return [];
+
+    final result = await _supabase
+        .from('reservations')
+        .select()
+        .eq('restaurant_id', _restaurantId!)
+        .eq('status', 'pending');
+
+    return List<Map<String, dynamic>>.from(result);
+  }
+
+  Future<void> _updateStatus(String reservationId, String status) async {
+    await _supabase
+        .from('reservations')
+        .update({'status': status}).eq('id', reservationId);
+
+    // Refresh after update
+    setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Reservation Requests')),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: _getPendingReservations(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+      body: _restaurantId == null
+          ? const Center(child: CircularProgressIndicator())
+          : FutureBuilder<List<Map<String, dynamic>>>(
+              future: _fetchReservations(),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
 
-          final reservations = snapshot.data?.docs ?? [];
+                final reservations = snapshot.data!;
+                if (reservations.isEmpty) {
+                  return const Center(child: Text('No pending reservations.'));
+                }
 
-          if (reservations.isEmpty) {
-            return const Center(child: Text('No pending reservations.'));
-          }
+                return ListView.builder(
+                  itemCount: reservations.length,
+                  itemBuilder: (context, index) {
+                    final reservation = reservations[index];
 
-          return ListView.builder(
-            itemCount: reservations.length,
-            itemBuilder: (context, index) {
-              final data = reservations[index].data() as Map<String, dynamic>;
-              final id = reservations[index].id;
-
-              return Card(
-                margin: const EdgeInsets.all(12),
-                child: ListTile(
-                  title: Text(
-                      'Reservation for ${data['guests']} guests at ${data['time']}'),
-                  subtitle: Text('Date: ${data['date']}'),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.check, color: Colors.green),
-                        onPressed: () => _updateStatus(id, 'confirmed'),
+                    return Card(
+                      margin: const EdgeInsets.all(12),
+                      child: ListTile(
+                        title: Text(
+                          'Guests: ${reservation['guests']} at ${reservation['time']}',
+                        ),
+                        subtitle: Text('Date: ${reservation['date']}'),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon:
+                                  const Icon(Icons.check, color: Colors.green),
+                              onPressed: () =>
+                                  _updateStatus(reservation['id'], 'confirmed'),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.close, color: Colors.red),
+                              onPressed: () =>
+                                  _updateStatus(reservation['id'], 'rejected'),
+                            ),
+                          ],
+                        ),
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.close, color: Colors.red),
-                        onPressed: () => _updateStatus(id, 'rejected'),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          );
-        },
-      ),
+                    );
+                  },
+                );
+              },
+            ),
     );
   }
 }

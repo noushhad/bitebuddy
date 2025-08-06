@@ -1,5 +1,5 @@
-// lib/widgets/preferences_popup.dart
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class PreferencesPopup extends StatefulWidget {
   final void Function(List<String>) onSubmit;
@@ -22,6 +22,47 @@ class _PreferencesPopupState extends State<PreferencesPopup> {
     'Fine Dining'
   ];
   final List<String> _selected = [];
+
+  Future<void> _saveAndRedirect() async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) return;
+
+    // Save preferences in Supabase
+    await Supabase.instance.client.from('users').update({
+      'preferences': _selected,
+      'preferencesSet': true,
+    }).eq('uid', user.id);
+
+    widget.onSubmit(_selected); // still trigger parent callback
+    if (context.mounted) {
+      Navigator.pop(context); // close dialog
+      await _redirectBasedOnRole(context); // go to correct home
+    }
+  }
+
+  Future<void> _redirectBasedOnRole(BuildContext context) async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) {
+      Navigator.pushNamedAndRemoveUntil(context, '/login', (r) => false);
+      return;
+    }
+
+    final data = await Supabase.instance.client
+        .from('users')
+        .select('user_type')
+        .eq('uid', user.id)
+        .maybeSingle();
+
+    final type = data?['user_type'];
+
+    if (type == 'owner') {
+      Navigator.pushNamedAndRemoveUntil(
+          context, '/owner/dashboard', (r) => false);
+    } else {
+      Navigator.pushNamedAndRemoveUntil(
+          context, '/customer/home', (r) => false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -46,10 +87,7 @@ class _PreferencesPopupState extends State<PreferencesPopup> {
       ),
       actions: [
         TextButton(
-          onPressed: () {
-            widget.onSubmit(_selected);
-            Navigator.pop(context);
-          },
+          onPressed: _saveAndRedirect,
           child: const Text('Done'),
         )
       ],

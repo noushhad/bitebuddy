@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 import '../../widgets/restaurant_card.dart';
 
 class FavoritesScreen extends StatefulWidget {
@@ -11,9 +11,7 @@ class FavoritesScreen extends StatefulWidget {
 }
 
 class _FavoritesScreenState extends State<FavoritesScreen> {
-  final _auth = FirebaseAuth.instance;
-  final _firestore = FirebaseFirestore.instance;
-
+  final _supabase = Supabase.instance.client;
   List<Map<String, dynamic>> _favorites = [];
   bool _isLoading = true;
 
@@ -24,44 +22,60 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
   }
 
   Future<void> _loadFavorites() async {
-    final uid = _auth.currentUser?.uid;
+    final uid = _supabase.auth.currentUser?.id;
     if (uid == null) return;
 
-    final userDoc = await _firestore.collection('users').doc(uid).get();
-    final favoriteIds = List<String>.from(userDoc.data()?['favorites'] ?? []);
+    setState(() => _isLoading = true);
 
-    List<Map<String, dynamic>> results = [];
-    for (String id in favoriteIds) {
-      final doc = await _firestore.collection('restaurants').doc(id).get();
-      if (doc.exists) {
-        results.add({'id': doc.id, ...doc.data()!});
-      }
+    // Step 1: Get all favorite restaurant IDs
+    final favResponse = await _supabase
+        .from('favorites')
+        .select('restaurant_id')
+        .eq('uid', uid);
+
+    final favIds =
+        List<String>.from(favResponse.map((f) => f['restaurant_id']));
+
+    if (favIds.isEmpty) {
+      setState(() {
+        _favorites = [];
+        _isLoading = false;
+      });
+      return;
     }
 
+    // Step 2: Fetch all restaurant data for those IDs
+    final restaurantResponse =
+        await _supabase.from('restaurants').select().inFilter('id', favIds);
+
     setState(() {
-      _favorites = results;
+      _favorites = List<Map<String, dynamic>>.from(restaurantResponse);
       _isLoading = false;
     });
   }
 
-  void _toggleFavorite(String restaurantId) async {
-    final uid = _auth.currentUser?.uid;
-    final userRef = _firestore.collection('users').doc(uid);
+  Future<void> _toggleFavorite(String restaurantId) async {
+    final uid = _supabase.auth.currentUser?.id;
+    if (uid == null) return;
 
-    final userDoc = await userRef.get();
-    final favorites = List<String>.from(userDoc.data()?['favorites'] ?? []);
+    final existing = await _supabase
+        .from('favorites')
+        .select()
+        .eq('uid', uid)
+        .eq('restaurant_id', restaurantId);
 
-    if (favorites.contains(restaurantId)) {
-      await userRef.update({
-        'favorites': FieldValue.arrayRemove([restaurantId])
-      });
+    if (existing.isNotEmpty) {
+      await _supabase
+          .from('favorites')
+          .delete()
+          .match({'uid': uid, 'restaurant_id': restaurantId});
     } else {
-      await userRef.update({
-        'favorites': FieldValue.arrayUnion([restaurantId])
-      });
+      await _supabase
+          .from('favorites')
+          .insert({'uid': uid, 'restaurant_id': restaurantId});
     }
 
-    _loadFavorites(); // refresh
+    _loadFavorites(); // refresh after toggle
   }
 
   @override
@@ -80,10 +94,10 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                       name: r['name'] ?? 'Unnamed',
                       address: r['address'] ?? 'No address',
                       rating: (r['rating'] ?? 0).toDouble(),
-                      imageUrl: r['imageUrl'] ?? '',
+                      imageUrl: r['image_url'] ?? '',
                       isFavorite: true,
                       onTap: () {
-                        // Optionally: navigate to restaurant details
+                        // TODO: Optionally navigate to detail screen
                       },
                       onFavoriteToggle: () => _toggleFavorite(r['id']),
                     );

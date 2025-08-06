@@ -1,6 +1,5 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class PreferencesScreen extends StatefulWidget {
   const PreferencesScreen({super.key});
@@ -11,8 +10,8 @@ class PreferencesScreen extends StatefulWidget {
 
 class _PreferencesScreenState extends State<PreferencesScreen> {
   final List<String> _allOptions = [
-    'Deshi'
-        'Italian',
+    'Deshi',
+    'Italian',
     'Chinese',
     'Indian',
     'Mexican',
@@ -21,12 +20,11 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
     'Café',
     'Fine Dining'
   ];
+
   List<String> _selected = [];
-
-  final _auth = FirebaseAuth.instance;
-  final _firestore = FirebaseFirestore.instance;
-
   bool _loading = true;
+
+  final _client = Supabase.instance.client;
 
   @override
   void initState() {
@@ -35,24 +33,64 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
   }
 
   Future<void> _loadPreferences() async {
-    final uid = _auth.currentUser!.uid;
-    final doc = await _firestore.collection('users').doc(uid).get();
-    setState(() {
-      _selected = List<String>.from(doc['preferences'] ?? []);
-      _loading = false;
-    });
+    final user = _client.auth.currentUser;
+    if (user == null) return;
+
+    try {
+      final response = await _client
+          .from('users')
+          .select('preferences')
+          .eq('uid', user.id)
+          .single();
+
+      if (mounted) {
+        setState(() {
+          _selected = List<String>.from(response['preferences'] ?? []);
+          _loading = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading preferences: $e');
+      setState(() => _loading = false);
+    }
   }
 
-  Future<void> _savePreferences() async {
-    final uid = _auth.currentUser!.uid;
-    await _firestore.collection('users').doc(uid).update({
-      'preferences': _selected,
-      'preferencesSet': true,
-    });
+  Future<void> _savePreferencesAndRedirect() async {
+    final user = _client.auth.currentUser;
+    if (user == null) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Preferences saved')),
-    );
+    try {
+      await _client.from('users').update({
+        'preferences': _selected,
+      }).eq('uid', user.id);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Preferences saved')),
+      );
+
+      // Redirect based on role
+      final data = await _client
+          .from('users')
+          .select('user_type')
+          .eq('uid', user.id)
+          .maybeSingle();
+
+      final role = data?['user_type'];
+      if (!mounted) return;
+
+      if (role == 'owner') {
+        Navigator.pushNamedAndRemoveUntil(
+            context, '/owner/dashboard', (route) => false);
+      } else {
+        Navigator.pushNamedAndRemoveUntil(
+            context, '/customer/home', (route) => false);
+      }
+    } catch (e) {
+      print('Error saving: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error saving: $e')),
+      );
+    }
   }
 
   @override
@@ -84,16 +122,7 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
                   ),
                   const SizedBox(height: 20),
                   ElevatedButton(
-                    onPressed: () async {
-                      await _savePreferences();
-                      if (context.mounted) {
-                        Navigator.pushNamedAndRemoveUntil(
-                          context,
-                          '/customer/home',
-                          (route) => false,
-                        );
-                      }
-                    },
+                    onPressed: _savePreferencesAndRedirect,
                     child: const Text('Save'),
                   )
                 ],

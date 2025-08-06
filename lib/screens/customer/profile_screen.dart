@@ -1,6 +1,5 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -11,8 +10,7 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _auth = FirebaseAuth.instance;
-  final _firestore = FirebaseFirestore.instance;
+  final _supabase = Supabase.instance.client;
 
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
@@ -27,30 +25,54 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _loadProfile() async {
-    final uid = _auth.currentUser!.uid;
-    final doc = await _firestore.collection('users').doc(uid).get();
+    final uid = _supabase.auth.currentUser?.id;
+    if (uid == null) return;
 
-    if (doc.exists) {
-      final data = doc.data()!;
-      _nameController.text = data['name'] ?? '';
-      _emailController.text = data['email'] ?? _auth.currentUser!.email ?? '';
-      _contactController.text = data['contact'] ?? '';
+    final response = await _supabase
+        .from('users')
+        .select()
+        .eq('uid', uid) // ✅ you're using uid, so this is correct
+        .maybeSingle();
+
+    if (response != null) {
+      _nameController.text = response['name'] ?? '';
+      _emailController.text =
+          response['email'] ?? _supabase.auth.currentUser?.email ?? '';
+      _contactController.text = response['contact'] ?? '';
     }
 
     setState(() => _isLoading = false);
   }
 
   Future<void> _saveProfile() async {
-    final uid = _auth.currentUser!.uid;
-    await _firestore.collection('users').doc(uid).update({
+    if (!_formKey.currentState!.validate()) return;
+
+    final uid = _supabase.auth.currentUser?.id;
+    if (uid == null) return;
+
+    await _supabase.from('users').update({
       'name': _nameController.text.trim(),
       'email': _emailController.text.trim(),
       'contact': _contactController.text.trim(),
-    });
+    }).eq('uid', uid); // ✅ still using uid as your schema
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Profile updated')),
-    );
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Profile updated')),
+      );
+
+      // Optionally check user type here and redirect accordingly
+      final userData = await _supabase
+          .from('users')
+          .select('user_type')
+          .eq('uid', uid)
+          .maybeSingle();
+
+      final type = userData?['user_type'];
+      final route = (type == 'owner') ? '/owner/dashboard' : '/customer/home';
+
+      Navigator.pushNamedAndRemoveUntil(context, route, (route) => false);
+    }
   }
 
   @override
@@ -68,6 +90,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     TextFormField(
                       controller: _nameController,
                       decoration: const InputDecoration(labelText: 'Name'),
+                      validator: (val) =>
+                          val == null || val.isEmpty ? 'Enter name' : null,
                     ),
                     TextFormField(
                       controller: _emailController,
@@ -78,19 +102,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       controller: _contactController,
                       decoration:
                           const InputDecoration(labelText: 'Contact Number'),
+                      validator: (val) => val == null || val.isEmpty
+                          ? 'Enter contact number'
+                          : null,
                     ),
                     const SizedBox(height: 20),
                     ElevatedButton(
-                      onPressed: () async {
-                        await _saveProfile();
-                        if (context.mounted) {
-                          Navigator.pushNamedAndRemoveUntil(
-                            context,
-                            '/customer/home',
-                            (route) => false,
-                          );
-                        }
-                      },
+                      onPressed: _saveProfile,
                       child: const Text('Save Changes'),
                     )
                   ],

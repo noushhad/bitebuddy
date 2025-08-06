@@ -1,6 +1,6 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
 
 class MenuEditorScreen extends StatefulWidget {
   const MenuEditorScreen({super.key});
@@ -10,15 +10,13 @@ class MenuEditorScreen extends StatefulWidget {
 }
 
 class _MenuEditorScreenState extends State<MenuEditorScreen> {
-  final String restaurantId = 'your_restaurant_id'; // TODO: fetch dynamically
-  final _firestore = FirebaseFirestore.instance;
-  final _auth = FirebaseAuth.instance;
-
+  final _supabase = Supabase.instance.client;
   final _formKey = GlobalKey<FormState>();
+
   String _name = '';
   String _description = '';
   double _price = 0;
-  String _category = 'Starters'; // Default category
+  String _category = 'Starters';
 
   final List<String> _categories = [
     'Starters',
@@ -29,7 +27,47 @@ class _MenuEditorScreenState extends State<MenuEditorScreen> {
     'Specials'
   ];
 
-  // Add or edit a menu item
+  List<Map<String, dynamic>> _menuItems = [];
+  String? _restaurantId;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchMenu();
+  }
+
+  Future<void> _fetchMenu() async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return;
+
+    final restaurant = await _supabase
+        .from('restaurants')
+        .select('id')
+        .eq('owner_id', userId)
+        .maybeSingle();
+
+    if (restaurant == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No restaurant found for this user.')),
+      );
+      return;
+    }
+
+    _restaurantId = restaurant['id'];
+
+    final items = await _supabase
+        .from('menu_items')
+        .select()
+        .eq('restaurant_id', _restaurantId!)
+        .order('name', ascending: true);
+
+    setState(() {
+      _menuItems = List<Map<String, dynamic>>.from(items);
+      _loading = false;
+    });
+  }
+
   Future<void> _addOrEditMenuItem([String? itemId]) async {
     if (!_formKey.currentState!.validate()) return;
     _formKey.currentState!.save();
@@ -38,42 +76,32 @@ class _MenuEditorScreenState extends State<MenuEditorScreen> {
       'name': _name,
       'description': _description,
       'price': _price,
-      'category': _category, // Store the category for each item
+      'category': _category,
+      'restaurant_id': _restaurantId,
     };
 
     try {
-      final ref = _firestore
-          .collection('restaurants')
-          .doc(restaurantId)
-          .collection('menuItems');
-
       if (itemId != null) {
-        await ref.doc(itemId).update(data); // Update existing item
+        await _supabase.from('menu_items').update(data).eq('id', itemId);
       } else {
-        await ref.add(data); // Add a new item to the collection
+        final id = const Uuid().v4();
+        await _supabase.from('menu_items').insert({'id': id, ...data});
       }
 
-      Navigator.pop(context); // Close the dialog after saving
+      Navigator.pop(context);
+      _fetchMenu();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error saving menu item: $e')),
+        SnackBar(content: Text('Error saving item: $e')),
       );
     }
   }
 
-  // Delete a menu item
   Future<void> _deleteMenuItem(String itemId) async {
     try {
-      await _firestore
-          .collection('restaurants')
-          .doc(restaurantId)
-          .collection('menuItems')
-          .doc(itemId)
-          .delete();
+      await _supabase.from('menu_items').delete().eq('id', itemId);
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Menu item deleted!')),
-      );
+      _fetchMenu();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error deleting item: $e')),
@@ -81,23 +109,16 @@ class _MenuEditorScreenState extends State<MenuEditorScreen> {
     }
   }
 
-  // Show the form to add or edit a menu item
-  void _showMenuItemForm([Map<String, dynamic>? existingItem, String? itemId]) {
-    if (existingItem != null) {
-      _name = existingItem['name'];
-      _description = existingItem['description'];
-      _price = (existingItem['price'] ?? 0).toDouble();
-      _category = existingItem['category'] ?? 'Starters'; // Assign the category
-    } else {
-      _name = _description = '';
-      _price = 0;
-      _category = 'Starters'; // Default category
-    }
+  void _showMenuItemForm([Map<String, dynamic>? item, String? id]) {
+    _name = item?['name'] ?? '';
+    _description = item?['description'] ?? '';
+    _price = (item?['price'] ?? 0).toDouble();
+    _category = item?['category'] ?? 'Starters';
 
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        title: Text(itemId != null ? 'Edit Menu Item' : 'Add Menu Item'),
+        title: Text(id != null ? 'Edit Menu Item' : 'Add Menu Item'),
         content: Form(
           key: _formKey,
           child: SingleChildScrollView(
@@ -126,17 +147,15 @@ class _MenuEditorScreenState extends State<MenuEditorScreen> {
                   onSaved: (val) => _price = double.parse(val!),
                 ),
                 const SizedBox(height: 20),
-                // Category dropdown
                 DropdownButtonFormField<String>(
                   value: _category,
                   decoration: const InputDecoration(labelText: 'Category'),
                   items: _categories
-                      .map((category) => DropdownMenuItem(
-                            value: category,
-                            child: Text(category),
-                          ))
+                      .map((cat) =>
+                          DropdownMenuItem(value: cat, child: Text(cat)))
                       .toList(),
-                  onChanged: (value) => setState(() => _category = value!),
+                  onChanged: (val) =>
+                      setState(() => _category = val ?? 'Starters'),
                 ),
               ],
             ),
@@ -144,13 +163,11 @@ class _MenuEditorScreenState extends State<MenuEditorScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel')),
           ElevatedButton(
-            onPressed: () => _addOrEditMenuItem(itemId),
-            child: const Text('Save'),
-          ),
+              onPressed: () => _addOrEditMenuItem(id),
+              child: const Text('Save')),
         ],
       ),
     );
@@ -158,66 +175,52 @@ class _MenuEditorScreenState extends State<MenuEditorScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final ref = _firestore
-        .collection('restaurants')
-        .doc(restaurantId)
-        .collection('menuItems');
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('Menu'),
         actions: [
           TextButton.icon(
-            icon: const Icon(Icons.add, color: Color.fromARGB(255, 7, 7, 7)),
+            icon: const Icon(Icons.add, color: Colors.black),
             label:
                 const Text('Add Item', style: TextStyle(color: Colors.black)),
             onPressed: () => _showMenuItemForm(),
           ),
         ],
       ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: ref.snapshots(),
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) return const CircularProgressIndicator();
-
-          final items = snapshot.data!.docs;
-
-          if (items.isEmpty) {
-            return const Center(child: Text('No menu items yet.'));
-          }
-
-          return ListView.builder(
-            itemCount: items.length,
-            itemBuilder: (context, index) {
-              final item = items[index];
-              final data = item.data() as Map<String, dynamic>;
-
-              return Card(
-                margin: const EdgeInsets.all(10),
-                child: ListTile(
-                  title: Text(data['name']),
-                  subtitle: Text(
-                      '${data['description']}\nPrice: ${data['price']} Taka'),
-                  isThreeLine: true,
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.edit, color: Colors.orange),
-                        onPressed: () => _showMenuItemForm(data, item.id),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _menuItems.isEmpty
+              ? const Center(child: Text('No menu items yet.'))
+              : ListView.builder(
+                  itemCount: _menuItems.length,
+                  itemBuilder: (context, index) {
+                    final item = _menuItems[index];
+                    return Card(
+                      margin: const EdgeInsets.all(10),
+                      child: ListTile(
+                        title: Text(item['name']),
+                        subtitle: Text(
+                            '${item['description']}\nPrice: ${item['price']} Taka'),
+                        isThreeLine: true,
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon:
+                                  const Icon(Icons.edit, color: Colors.orange),
+                              onPressed: () =>
+                                  _showMenuItemForm(item, item['id']),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete, color: Colors.red),
+                              onPressed: () => _deleteMenuItem(item['id']),
+                            ),
+                          ],
+                        ),
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.delete, color: Colors.red),
-                        onPressed: () => _deleteMenuItem(item.id),
-                      ),
-                    ],
-                  ),
+                    );
+                  },
                 ),
-              );
-            },
-          );
-        },
-      ),
     );
   }
 }
