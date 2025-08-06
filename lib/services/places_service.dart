@@ -3,9 +3,8 @@ import 'package:http/http.dart' as http;
 
 class PlacesService {
   final String apiKey =
-      'AlzaSyRM3tIJP7LCerIthSbcle0QuQB3Yv87erR'; // Replace this with your real key
+      'AlzaSyjPP-Pa7a3eMKKtZzK7WZAMuXa8PrfrsED'; // use your real key
 
-  /// Search for nearby restaurants using Google Places API
   Future<List<Map<String, dynamic>>> searchNearbyRestaurants({
     required double lat,
     required double lng,
@@ -36,7 +35,6 @@ class PlacesService {
     }
   }
 
-  /// Build a full image URL from Google Places API photo reference
   String getPhotoUrl(String photoRef) {
     return 'https://maps.gomaps.pro/maps/api/place/photo'
         '?maxwidth=400'

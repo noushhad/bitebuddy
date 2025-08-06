@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:bitebuddy/screens/customer/reservation_screen.dart';
+import 'package:bitebuddy/widgets/review/review_form.dart';
+import 'package:bitebuddy/widgets/review/review_list.dart';
+import 'package:bitebuddy/utils/directions_helper.dart';
 
 class RestaurantDetailScreen extends StatefulWidget {
   final Map<String, dynamic> restaurant;
@@ -16,6 +19,7 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
 
   bool _isFavorite = false;
   List<Map<String, dynamic>> _menuItems = [];
+  String? _userType;
 
   bool get isSupabaseRestaurant => widget.restaurant.containsKey('owner_id');
   String get restaurantId =>
@@ -24,8 +28,16 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
   @override
   void initState() {
     super.initState();
+    _loadUserType();
     if (isSupabaseRestaurant) _loadMenu();
     _checkFavorite();
+  }
+
+  Future<void> _loadUserType() async {
+    final user = _supabase.auth.currentUser;
+    setState(() {
+      _userType = user?.userMetadata?['userType'];
+    });
   }
 
   Future<void> _loadMenu() async {
@@ -73,13 +85,6 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
     setState(() => _isFavorite = !_isFavorite);
   }
 
-  // void _makeReservation() {
-  //   Navigator.pushNamed(
-  //     context,
-  //     '/customer/reserve',
-  //     arguments: restaurantId,
-  //   );
-  // }
   void _makeReservation() {
     if (isSupabaseRestaurant) {
       Navigator.push(
@@ -93,6 +98,43 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
         const SnackBar(
             content: Text(
                 'Reservations only available for BiteBuddy partner restaurants.')),
+      );
+    }
+  }
+
+  Future<void> _launchDirections() async {
+    try {
+      final r = widget.restaurant;
+      double? lat;
+      double? lng;
+
+      if (isSupabaseRestaurant) {
+        lat = r['latitude'];
+        lng = r['longitude'];
+      } else {
+        lat = r['geometry']?['location']?['lat'];
+        lng = r['geometry']?['location']?['lng'];
+
+        if ((lat == null || lng == null) && r['place_id'] != null) {
+          final coords =
+              await DirectionsHelper.fetchLatLngFromPlaceId(r['place_id']);
+          if (coords != null) {
+            lat = coords['lat'];
+            lng = coords['lng'];
+          }
+        }
+      }
+
+      if (lat != null && lng != null) {
+        await DirectionsHelper.openGoogleMapsDirections(lat, lng);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Location not available')),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error launching directions: $e')),
       );
     }
   }
@@ -170,7 +212,7 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
                         : const Icon(Icons.fastfood),
                     title: Text(item['name'] ?? ''),
                     subtitle: Text(item['description'] ?? ''),
-                    trailing: Text('\$${item['price'].toString()}'),
+                    trailing: Text('৳${item['price'].toString()}'),
                   )),
             const SizedBox(height: 20),
             ElevatedButton.icon(
@@ -178,6 +220,19 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
               label: const Text('Make Reservation'),
               onPressed: _makeReservation,
             ),
+            const SizedBox(height: 10),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.directions),
+              label: const Text('Get Directions'),
+              onPressed: _launchDirections,
+            ),
+            const SizedBox(height: 30),
+            ReviewForm(restaurantId: restaurantId),
+            const SizedBox(height: 20),
+            const Text("Customer Reviews",
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 10),
+            ReviewList(restaurantId: restaurantId),
           ],
         ],
       ),

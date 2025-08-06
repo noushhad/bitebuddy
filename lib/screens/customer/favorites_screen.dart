@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../widgets/restaurant_card.dart';
+import '../customer/restaurant_detail_screen.dart';
 
 class FavoritesScreen extends StatefulWidget {
   const FavoritesScreen({super.key});
@@ -27,7 +28,6 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
 
     setState(() => _isLoading = true);
 
-    // Step 1: Get all favorite restaurant IDs
     final favResponse = await _supabase
         .from('favorites')
         .select('restaurant_id')
@@ -44,7 +44,6 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
       return;
     }
 
-    // Step 2: Fetch all restaurant data for those IDs
     final restaurantResponse =
         await _supabase.from('restaurants').select().inFilter('id', favIds);
 
@@ -75,7 +74,16 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
           .insert({'uid': uid, 'restaurant_id': restaurantId});
     }
 
-    _loadFavorites(); // refresh after toggle
+    _loadFavorites();
+  }
+
+  void _goToDetails(Map<String, dynamic> restaurant) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => RestaurantDetailScreen(restaurant: restaurant),
+      ),
+    );
   }
 
   @override
@@ -96,9 +104,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                       rating: (r['rating'] ?? 0).toDouble(),
                       imageUrl: r['image_url'] ?? '',
                       isFavorite: true,
-                      onTap: () {
-                        // TODO: Optionally navigate to detail screen
-                      },
+                      onTap: () => _goToDetails(r),
                       onFavoriteToggle: () => _toggleFavorite(r['id']),
                     );
                   },
