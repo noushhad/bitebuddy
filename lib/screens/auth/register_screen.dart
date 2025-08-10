@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:onesignal_flutter/onesignal_flutter.dart';
 import '../../services/auth_service.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -16,7 +17,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   bool _isLoading = false;
 
-  void _register() async {
+  Future<void> _register() async {
     setState(() => _isLoading = true);
 
     try {
@@ -26,23 +27,32 @@ class _RegisterScreenState extends State<RegisterScreen> {
         _selectedUserType,
       );
 
+      // If register signs the user in (usual flow), log them into OneSignal
+      final uid = Supabase.instance.client.auth.currentUser?.id;
+      if (uid != null) {
+        OneSignal.login(uid);
+      }
+
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Registration Successful")),
       );
 
-      if (context.mounted) await _redirectBasedOnRole(context);
+      await _redirectBasedOnRole(context);
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("Error: $e")),
       );
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   Future<void> _redirectBasedOnRole(BuildContext context) async {
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) {
+      if (!mounted) return;
       Navigator.pushNamedAndRemoveUntil(context, '/login', (r) => false);
       return;
     }
@@ -55,6 +65,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     final type = data?['user_type'];
 
+    if (!mounted) return;
     if (type == 'owner') {
       Navigator.pushNamedAndRemoveUntil(
           context, '/owner/dashboard', (r) => false);
@@ -96,7 +107,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
             _isLoading
                 ? const CircularProgressIndicator()
                 : ElevatedButton(
-                    onPressed: _register, child: const Text("Register")),
+                    onPressed: _register,
+                    child: const Text("Register"),
+                  ),
           ],
         ),
       ),

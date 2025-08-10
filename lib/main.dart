@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:onesignal_flutter/onesignal_flutter.dart';
 
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/register_screen.dart';
@@ -17,13 +19,42 @@ import 'screens/owner/restaurant_details_form.dart';
 import 'screens/customer/reservation_screen.dart';
 import 'screens/owner/location_picker_screen.dart';
 
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+Future<void> initOneSignal() async {
+  OneSignal.Debug.setLogLevel(OSLogLevel.verbose); // optional
+  OneSignal.initialize('YOUR-ONESIGNAL-APP-ID'); // <- replace
+
+  await OneSignal.Notifications.requestPermission(true);
+
+  final uid = Supabase.instance.client.auth.currentUser?.id;
+  if (uid != null) {
+    OneSignal.login(uid);
+  }
+
+  OneSignal.Notifications.addForegroundWillDisplayListener((event) {
+    // default behavior (no preventDefault) shows heads-up
+  });
+
+  OneSignal.Notifications.addClickListener((event) {
+    final data = event.notification.additionalData ?? {};
+    final route = data['route'] as String?;
+    if (route != null && navigatorKey.currentState != null) {
+      navigatorKey.currentState!.pushNamed(route);
+    }
+  });
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
   await Supabase.initialize(
     url: 'https://bspvqggydpudjqbzislf.supabase.co',
     anonKey:
         'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJzcHZxZ2d5ZHB1ZGpxYnppc2xmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQzMjEyNDUsImV4cCI6MjA2OTg5NzI0NX0.y0f7ukMaEIerJpMA8QZEbnMVBuSKw2GV2x-fe-2dr4s',
   );
+
+  await initOneSignal();
 
   runApp(const MyApp());
 }
@@ -36,6 +67,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'BiteBuddy',
       debugShowCheckedModeBanner: false,
+      navigatorKey: navigatorKey,
       routes: {
         '/login': (_) => const LoginScreen(),
         '/register': (_) => const RegisterScreen(),
@@ -65,6 +97,11 @@ class MyApp extends StatelessWidget {
           );
         }
 
+        if (settings.name == '/customer/reservations') {
+          // replace with your customer's reservations screen if you add one
+          return MaterialPageRoute(builder: (_) => const HomeScreen());
+        }
+
         return MaterialPageRoute(
           builder: (_) => const Scaffold(
             body: Center(child: Text('Page not found')),
@@ -85,6 +122,27 @@ class SupabaseAuthListener extends StatefulWidget {
 
 class _SupabaseAuthListenerState extends State<SupabaseAuthListener> {
   final client = Supabase.instance.client;
+  StreamSubscription<AuthState>? _authSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _authSub = client.auth.onAuthStateChange.listen((state) {
+      final uid = client.auth.currentUser?.id;
+      if (uid != null) {
+        OneSignal.login(uid);
+      } else {
+        OneSignal.logout();
+      }
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _authSub?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -98,6 +156,14 @@ class _SupabaseAuthListenerState extends State<SupabaseAuthListener> {
     return FutureBuilder(
       future: client.from('users').select().eq('uid', user.id).maybeSingle(),
       builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Scaffold(
+            body: Center(
+              child: Text('Error loading profile: ${snapshot.error}'),
+            ),
+          );
+        }
+
         if (!snapshot.hasData) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),

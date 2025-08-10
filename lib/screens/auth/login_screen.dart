@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:onesignal_flutter/onesignal_flutter.dart';
 import '../../services/auth_service.dart';
-// import '../../models/user_model.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -16,7 +16,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   bool _isLoading = false;
 
-  void _login() async {
+  Future<void> _login() async {
     setState(() => _isLoading = true);
 
     try {
@@ -26,25 +26,31 @@ class _LoginScreenState extends State<LoginScreen> {
       );
 
       if (user != null) {
+        // Identify this device with OneSignal using Supabase uid
+        OneSignal.login(user.id);
+
         final userModel = await AuthService().getUserDetails(user.id);
         if (userModel != null) {
+          if (!mounted) return;
           await _redirectBasedOnRole(context);
         } else {
           throw 'User data not found in Supabase.';
         }
       }
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("Login Error: $e")),
       );
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   Future<void> _redirectBasedOnRole(BuildContext context) async {
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) {
+      if (!mounted) return;
       Navigator.pushNamedAndRemoveUntil(context, '/login', (r) => false);
       return;
     }
@@ -57,6 +63,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     final type = data?['user_type'];
 
+    if (!mounted) return;
     if (type == 'owner') {
       Navigator.pushNamedAndRemoveUntil(
           context, '/owner/dashboard', (r) => false);

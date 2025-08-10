@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:onesignal_flutter/onesignal_flutter.dart';
 import '../services/auth_service.dart';
 
 class LogoutButton extends StatelessWidget {
@@ -9,8 +10,14 @@ class LogoutButton extends StatelessWidget {
     return IconButton(
       icon: const Icon(Icons.logout),
       onPressed: () async {
+        // Unlink this device from the user for targeted pushes
+        OneSignal.logout();
+
         await AuthService().logout();
-        Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+        if (context.mounted) {
+          Navigator.pushNamedAndRemoveUntil(
+              context, '/login', (route) => false);
+        }
       },
     );
   }
