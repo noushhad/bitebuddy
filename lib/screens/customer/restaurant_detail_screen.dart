@@ -43,8 +43,9 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
   Future<void> _loadMenu() async {
     final result = await _supabase
         .from('menu_items')
-        .select()
-        .eq('restaurant_id', restaurantId);
+        .select('id, name, image_url')
+        .eq('restaurant_id', restaurantId)
+        .order('name', ascending: true);
 
     setState(() {
       _menuItems = List<Map<String, dynamic>>.from(result);
@@ -139,6 +140,15 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
     }
   }
 
+  void _openGallery(List<String> urls, int initial) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ImageGalleryScreen(urls: urls, initialIndex: initial),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final r = widget.restaurant;
@@ -151,6 +161,13 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
             ? 'https://maps.gomaps.pro/maps/api/place/photo'
                 '?maxwidth=400&photoreference=${r['photos'][0]['photo_reference']}&key=AlzaSyRM3tIJP7LCerIthSbcle0QuQB3Yv87erR'
             : '');
+
+    // Build a simple list of urls + titles for the horizontal gallery
+    final menuUrls = _menuItems
+        .map<String?>((m) => (m['image_url'] as String?))
+        .where((u) => u != null && u.isNotEmpty)
+        .cast<String>()
+        .toList();
 
     return Scaffold(
       appBar: AppBar(
@@ -198,22 +215,72 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
           const SizedBox(height: 16),
           Text(description),
           const SizedBox(height: 20),
+
+          // MENU SECTION (Supabase restaurants)
           if (isSupabaseRestaurant) ...[
             const Text('Menu',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
+
             if (_menuItems.isEmpty)
               const Text('No menu items available.')
             else
-              ..._menuItems.map((item) => ListTile(
-                    leading: item['image_url'] != null
-                        ? Image.network(item['image_url'],
-                            width: 50, height: 50, fit: BoxFit.cover)
-                        : const Icon(Icons.fastfood),
-                    title: Text(item['name'] ?? ''),
-                    subtitle: Text(item['description'] ?? ''),
-                    trailing: Text('৳${item['price'].toString()}'),
-                  )),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Horizontal scrollable image strip
+                  SizedBox(
+                    height: 150,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: _menuItems.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 12),
+                      itemBuilder: (context, index) {
+                        final item = _menuItems[index];
+                        final url = item['image_url'] as String?;
+                        final title = (item['name'] as String?) ?? '';
+                        if (url == null || url.isEmpty) {
+                          return const SizedBox.shrink();
+                        }
+                        return InkWell(
+                          onTap: () => _openGallery(menuUrls, index),
+                          child: SizedBox(
+                            width: 120,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Image.network(
+                                    url,
+                                    height: 100,
+                                    width: 120,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) => Container(
+                                      height: 100,
+                                      width: 120,
+                                      color: Colors.grey.shade300,
+                                      child: const Icon(Icons.broken_image),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontSize: 13),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+
             const SizedBox(height: 20),
             ElevatedButton.icon(
               icon: const Icon(Icons.book_online),
@@ -227,6 +294,8 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
               onPressed: _launchDirections,
             ),
             const SizedBox(height: 30),
+
+            // Reviews (visible to all; form visible since you allowed all auth)
             ReviewForm(restaurantId: restaurantId),
             const SizedBox(height: 20),
             const Text("Customer Reviews",
@@ -235,6 +304,58 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
             ReviewList(restaurantId: restaurantId),
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// Fullscreen swipeable, zoomable gallery for menu images.
+class ImageGalleryScreen extends StatefulWidget {
+  final List<String> urls;
+  final int initialIndex;
+
+  const ImageGalleryScreen({
+    super.key,
+    required this.urls,
+    this.initialIndex = 0,
+  });
+
+  @override
+  State<ImageGalleryScreen> createState() => _ImageGalleryScreenState();
+}
+
+class _ImageGalleryScreenState extends State<ImageGalleryScreen> {
+  late final PageController _controller =
+      PageController(initialPage: widget.initialIndex);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Menu (${widget.initialIndex + 1}/${widget.urls.length})'),
+      ),
+      backgroundColor: Colors.black,
+      body: PageView.builder(
+        controller: _controller,
+        itemCount: widget.urls.length,
+        itemBuilder: (_, index) {
+          final url = widget.urls[index];
+          return Center(
+            child: InteractiveViewer(
+              minScale: 0.8,
+              maxScale: 4.0,
+              child: Image.network(
+                url,
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => const Icon(
+                  Icons.broken_image,
+                  size: 64,
+                  color: Colors.white70,
+                ),
+              ),
+            ),
+          );
+        },
       ),
     );
   }

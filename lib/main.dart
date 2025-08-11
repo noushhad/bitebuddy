@@ -18,12 +18,15 @@ import 'screens/common/feed_screen.dart';
 import 'screens/owner/restaurant_details_form.dart';
 import 'screens/customer/reservation_screen.dart';
 import 'screens/owner/location_picker_screen.dart';
+import 'services/location_service.dart';
+import 'services/notification_service.dart';
+import 'screens/customer/notifications_screen.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 Future<void> initOneSignal() async {
   OneSignal.Debug.setLogLevel(OSLogLevel.verbose); // optional
-  OneSignal.initialize('YOUR-ONESIGNAL-APP-ID'); // <- replace
+  OneSignal.initialize('cc4'); // <- replace
 
   await OneSignal.Notifications.requestPermission(true);
 
@@ -82,6 +85,7 @@ class MyApp extends StatelessWidget {
         '/profile': (_) => const ProfileScreen(),
         '/preferences': (_) => const PreferencesScreen(),
         '/owner/restaurantDetails': (_) => const RestaurantDetailsForm(),
+        '/notifications': (context) => const NotificationsScreen(),
       },
       onGenerateRoute: (settings) {
         if (settings.name == '/customer/reserve') {
