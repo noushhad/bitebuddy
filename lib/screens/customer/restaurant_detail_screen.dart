@@ -21,6 +21,9 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
   List<Map<String, dynamic>> _menuItems = [];
   String? _userType;
 
+  // Resolved cover image URL (either Supabase public/signed or Google Places)
+  String? _coverUrl;
+
   bool get isSupabaseRestaurant => widget.restaurant.containsKey('owner_id');
   String get restaurantId =>
       widget.restaurant['id'] ?? widget.restaurant['place_id'] ?? '';
@@ -31,6 +34,56 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
     _loadUserType();
     if (isSupabaseRestaurant) _loadMenu();
     _checkFavorite();
+    _prepareCoverImage();
+  }
+
+  // ----------------- Helpers -----------------
+
+  String _publicUrl(String bucket, String path) {
+    // If DB already stores a full URL, just use it
+    if (path.startsWith('http://') || path.startsWith('https://')) return path;
+    return _supabase.storage.from(bucket).getPublicUrl(path);
+  }
+
+  String? _googlePlacesPhotoUrl(Map r) {
+    final photos = r['photos'];
+    if (photos is List && photos.isNotEmpty) {
+      final ref = photos[0]['photo_reference'];
+      if (ref != null && ref.toString().isNotEmpty) {
+        const apiKey = 'YOUR_GOOGLE_API_KEY'; // TODO: move to secure config
+        return 'https://maps.googleapis.com/maps/api/place/photo'
+            '?maxwidth=1200'
+            '&photo_reference=$ref' // <-- correct param
+            '&key=$apiKey';
+      }
+    }
+    return null;
+  }
+
+  Future<void> _prepareCoverImage() async {
+    final r = widget.restaurant;
+
+    if (isSupabaseRestaurant) {
+      // Try your likely field names for the stored path (adjust if needed)
+      final dynamic raw = r['image_path'] ?? r['cover_image'] ?? r['imageUrl'];
+      if (raw != null) {
+        final path = raw.toString();
+        if (path.isNotEmpty) {
+          setState(() {
+            _coverUrl = _publicUrl('restaurant-images', path);
+          });
+          return;
+        }
+      }
+      // No path provided; leave _coverUrl null
+      return;
+    } else {
+      // Google Places based restaurant
+      final url = _googlePlacesPhotoUrl(r);
+      if (url != null) {
+        setState(() => _coverUrl = url);
+      }
+    }
   }
 
   Future<void> _loadUserType() async {
@@ -47,9 +100,18 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
         .eq('restaurant_id', restaurantId)
         .order('name', ascending: true);
 
-    setState(() {
-      _menuItems = List<Map<String, dynamic>>.from(result);
-    });
+    final items = <Map<String, dynamic>>[];
+    for (final raw in result) {
+      final m = Map<String, dynamic>.from(raw);
+      final path = m['image_url'] as String?;
+      if (path != null && path.isNotEmpty) {
+        // Your menu images are in the `menu-images` bucket
+        m['image_url'] = _publicUrl('menu-images', path);
+      }
+      items.add(m);
+    }
+
+    setState(() => _menuItems = items);
   }
 
   Future<void> _checkFavorite() async {
@@ -156,13 +218,8 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
     final address = r['address'] ?? r['vicinity'] ?? 'Unknown';
     final rating = (r['rating'] ?? 0).toString();
     final description = r['description'] ?? 'No description available.';
-    final imageUrl = r['imageUrl'] ??
-        (r['photos'] != null
-            ? 'https://maps.gomaps.pro/maps/api/place/photo'
-                '?maxwidth=400&photoreference=${r['photos'][0]['photo_reference']}&key=AlzaSyRM3tIJP7LCerIthSbcle0QuQB3Yv87erR'
-            : '');
 
-    // Build a simple list of urls + titles for the horizontal gallery
+    // Build gallery URLs from loaded menu items
     final menuUrls = _menuItems
         .map<String?>((m) => (m['image_url'] as String?))
         .where((u) => u != null && u.isNotEmpty)
@@ -182,14 +239,19 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          if (imageUrl.isNotEmpty)
+          if (_coverUrl != null && _coverUrl!.isNotEmpty)
             ClipRRect(
               borderRadius: BorderRadius.circular(12),
               child: Image.network(
-                imageUrl,
+                _coverUrl!,
                 height: 200,
                 width: double.infinity,
                 fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Container(
+                  height: 200,
+                  color: Colors.grey.shade300,
+                  child: const Icon(Icons.broken_image),
+                ),
               ),
             ),
           const SizedBox(height: 20),

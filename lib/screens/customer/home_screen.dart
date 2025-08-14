@@ -33,7 +33,7 @@ class _HomeScreenState extends State<HomeScreen> {
           final rows = await _supabase
               .from('favorites')
               .select('restaurant_id')
-              .eq('user_id', user.id);
+              .eq('uid', user.id);
           return rows.map<String>((r) => r['restaurant_id'].toString()).toSet();
         },
         nearbyRadiusKm: 3.0,
@@ -53,7 +53,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final rows = await _supabase
         .from('favorites')
         .select('restaurant_id')
-        .eq('user_id', user.id);
+        .eq('uid', user.id);
     await NotificationService.instance.refreshFavoriteTags(
       rows.map<String>((r) => r['restaurant_id'].toString()).toSet(),
     );
@@ -127,13 +127,13 @@ class _HomeScreenState extends State<HomeScreen> {
               style: TextStyle(fontSize: 18),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 12),
-            if (_notificationsReady)
-              const Text('🔔 Notifications active',
-                  style: TextStyle(fontSize: 12))
-            else
-              const Text('…initializing notifications',
-                  style: TextStyle(fontSize: 12)),
+            //   const SizedBox(height: 12),
+            //   if (_notificationsReady)
+            //     const Text('🔔 Notifications active',
+            //         style: TextStyle(fontSize: 12))
+            //   else
+            //     const Text('…initializing notifications',
+            //         style: TextStyle(fontSize: 12)),
           ],
         ),
       ),

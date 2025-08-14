@@ -71,6 +71,10 @@ class MyApp extends StatelessWidget {
       title: 'BiteBuddy',
       debugShowCheckedModeBanner: false,
       navigatorKey: navigatorKey,
+      theme: ThemeData(
+    useMaterial3: true,
+    colorSchemeSeed: const Color.fromARGB(255, 198, 210, 24), // pick your brand color
+  ),
       routes: {
         '/login': (_) => const LoginScreen(),
         '/register': (_) => const RegisterScreen(),

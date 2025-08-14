@@ -18,7 +18,10 @@ class _ReservationConfirmScreenState extends State<ReservationConfirmScreen> {
   String? _processingId;
   DateTime? _selectedDate;
 
+  // Pending + Confirmed lists (both sorted by date/time asc)
   final List<Map<String, dynamic>> _rows = [];
+  final List<Map<String, dynamic>> _confirmedRows = [];
+
   RealtimeChannel? _channel;
 
   // Cache { user_id: {name, contact} }
@@ -66,37 +69,58 @@ class _ReservationConfirmScreenState extends State<ReservationConfirmScreen> {
   }
 
   Future<void> _initialFetch() async {
-    final List<dynamic> data;
-    if (_selectedDate != null) {
-      final ds = DateFormat('yyyy-MM-dd').format(_selectedDate!);
-      data = await _supabase
-          .from('reservations')
-          .select()
-          .eq('restaurant_id', _restaurantId!)
-          .eq('status', 'pending')
-          .eq('date', ds)
-          .order('date', ascending: true)
-          .order('time', ascending: true);
-    } else {
-      data = await _supabase
-          .from('reservations')
-          .select()
-          .eq('restaurant_id', _restaurantId!)
-          .eq('status', 'pending')
-          .order('date', ascending: true)
-          .order('time', ascending: true);
+    if (_restaurantId == null) return;
+
+    final String? ds = _selectedDate != null
+        ? DateFormat('yyyy-MM-dd').format(_selectedDate!)
+        : null;
+
+    // Build base query for pending
+    var pendingQuery = _supabase
+        .from('reservations')
+        .select()
+        .eq('restaurant_id', _restaurantId!)
+        .eq('status', 'pending');
+
+    // Build base query for confirmed
+    var confirmedQuery = _supabase
+        .from('reservations')
+        .select()
+        .eq('restaurant_id', _restaurantId!)
+        .eq('status', 'confirmed');
+
+    if (ds != null) {
+      pendingQuery = pendingQuery.eq('date', ds);
+      confirmedQuery = confirmedQuery.eq('date', ds);
     }
+
+    final pending = await pendingQuery
+        .order('date', ascending: true)
+        .order('time', ascending: true);
+
+    final confirmed = await confirmedQuery
+        .order('date', ascending: true)
+        .order('time', ascending: true);
 
     _rows
       ..clear()
-      ..addAll(
-          data.map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e)));
+      ..addAll(pending
+          .map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e)));
 
-    await _hydrateUsers(
-      _rows
-          .map((e) => (e['user_id'] ?? '').toString())
-          .where((s) => s.isNotEmpty),
-    );
+    _confirmedRows
+      ..clear()
+      ..addAll(confirmed
+          .map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e)));
+
+    _sortRows(_rows);
+    _sortRows(_confirmedRows);
+
+    // Hydrate user cache for both lists
+    await _hydrateUsers([
+      ..._rows.map((e) => (e['user_id'] ?? '').toString()),
+      ..._confirmedRows.map((e) => (e['user_id'] ?? '').toString()),
+    ].where((s) => s.isNotEmpty));
+
     if (mounted) setState(() {});
   }
 
@@ -111,15 +135,23 @@ class _ReservationConfirmScreenState extends State<ReservationConfirmScreen> {
         table: 'reservations',
         callback: (payload) async {
           final row = Map<String, dynamic>.from(payload.newRecord);
-          // manual filter
           if (row['restaurant_id'] != _restaurantId) return;
-          if (row['status'] != 'pending') return;
           if (!_datePass(row)) return;
 
-          _rows.removeWhere((r) => r['id'] == row['id']);
-          _rows.add(row);
-          _sortRows();
-          await _hydrateUsers([row['user_id'].toString()]);
+          final status = (row['status'] ?? '').toString();
+          if (status == 'pending') {
+            _rows.removeWhere((r) => r['id'] == row['id']);
+            _rows.add(row);
+            _sortRows(_rows);
+          } else if (status == 'confirmed') {
+            _confirmedRows.removeWhere((r) => r['id'] == row['id']);
+            _confirmedRows.add(row);
+            _sortRows(_confirmedRows);
+          } else {
+            // ignore other statuses here
+          }
+
+          await _hydrateUsers([row['user_id']?.toString() ?? '']);
           if (mounted) setState(() {});
         },
       )
@@ -132,19 +164,23 @@ class _ReservationConfirmScreenState extends State<ReservationConfirmScreen> {
           final row = Map<String, dynamic>.from(payload.newRecord);
           if (row['restaurant_id'] != _restaurantId) return;
 
-          final idx = _rows.indexWhere((r) => r['id'] == row['id']);
-          final keep = row['status'] == 'pending' && _datePass(row);
+          final pass = _datePass(row);
+          final status = (row['status'] ?? '').toString();
 
-          if (!keep) {
-            if (idx != -1) _rows.removeAt(idx);
-          } else {
-            if (idx == -1) {
+          // Always remove from both first
+          _rows.removeWhere((r) => r['id'] == row['id']);
+          _confirmedRows.removeWhere((r) => r['id'] == row['id']);
+
+          if (pass) {
+            if (status == 'pending') {
               _rows.add(row);
-            } else {
-              _rows[idx] = row;
-            }
-            _sortRows();
+              _sortRows(_rows);
+            } else if (status == 'confirmed') {
+              _confirmedRows.add(row);
+              _sortRows(_confirmedRows);
+            } // else (rejected/other) don't show
           }
+
           if (mounted) setState(() {});
         },
       )
@@ -159,6 +195,7 @@ class _ReservationConfirmScreenState extends State<ReservationConfirmScreen> {
           if (old['restaurant_id'] != _restaurantId) return;
 
           _rows.removeWhere((r) => r['id'] == old['id']);
+          _confirmedRows.removeWhere((r) => r['id'] == old['id']);
           if (mounted) setState(() {});
         },
       )
@@ -171,8 +208,8 @@ class _ReservationConfirmScreenState extends State<ReservationConfirmScreen> {
     return (row['date']?.toString() ?? '') == ds;
   }
 
-  void _sortRows() {
-    _rows.sort((a, b) {
+  void _sortRows(List<Map<String, dynamic>> list) {
+    list.sort((a, b) {
       final ad = (a['date'] ?? '') as String;
       final bd = (b['date'] ?? '') as String;
       final at = (a['time'] ?? '') as String;
@@ -184,18 +221,21 @@ class _ReservationConfirmScreenState extends State<ReservationConfirmScreen> {
   }
 
   Future<void> _hydrateUsers(Iterable<String> userIds) async {
-    final missing = userIds.where((id) => !_userCache.containsKey(id)).toList();
+    final missing = userIds
+        .where((id) => id.isNotEmpty && !_userCache.containsKey(id))
+        .toList();
     if (missing.isEmpty) return;
     try {
-      // universal IN filter string (works across postgrest 2.x)
+      // universal IN filter string
       final list = missing.map((s) => '"$s"').join(',');
       final res = await _supabase
-          .from('users') // change if your table name differs
-          .select('id,name,contact')
-          .filter('id', 'in', '($list)');
+          .from('users') // your users table with uid, name, contact
+          .select('uid,name,contact')
+          .filter('uid', 'in', '($list)');
 
       for (final row in res) {
-        _userCache[row['id'] as String] = {
+        final uid = row['uid'] as String;
+        _userCache[uid] = {
           'name': row['name'],
           'contact': row['contact'],
         };
@@ -244,21 +284,17 @@ class _ReservationConfirmScreenState extends State<ReservationConfirmScreen> {
             : 'Sorry—your booking at $restaurant was rejected.';
 
         await _supabase.functions.invoke('push-onesignal', body: {
-          'userIds': [
-            r['user_id']
-          ], // must match OneSignal.login(uid) in customer app
+          'userIds': [r['user_id']], // must match OneSignal.login(uid)
           'title': title,
           'body': body,
           'data': {
             'reservation_id': r['id'].toString(),
             'restaurant_id': r['restaurant_id'].toString(),
             'status': status,
-            // optional deep link route (handled in main.dart OneSignal click listener)
             'route': '/customer/reservations',
           },
         });
       } catch (e) {
-        // don't block UI if push fails
         debugPrint('push-onesignal error: $e');
       }
       // -----------------------------------------
@@ -280,7 +316,8 @@ class _ReservationConfirmScreenState extends State<ReservationConfirmScreen> {
     final picked = await showDatePicker(
       context: context,
       initialDate: _selectedDate ?? now,
-      firstDate: now,
+      firstDate: now
+          .subtract(const Duration(days: 1)), // allow today/yesterday if needed
       lastDate: now.add(const Duration(days: 180)),
       helpText: 'Filter by date',
     );
@@ -305,9 +342,15 @@ class _ReservationConfirmScreenState extends State<ReservationConfirmScreen> {
   @override
   Widget build(BuildContext context) {
     final rid = _restaurantId;
+
     final todayStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
-    final today = _rows.where((r) => r['date'] == todayStr).toList();
-    final later = _rows.where((r) => r['date'] != todayStr).toList();
+    final todayPending = _rows.where((r) => r['date'] == todayStr).toList();
+    final laterPending = _rows.where((r) => r['date'] != todayStr).toList();
+
+    final todayConfirmed =
+        _confirmedRows.where((r) => r['date'] == todayStr).toList();
+    final laterConfirmed =
+        _confirmedRows.where((r) => r['date'] != todayStr).toList();
 
     return Scaffold(
       appBar: AppBar(title: const Text('Reservation Requests')),
@@ -366,14 +409,15 @@ class _ReservationConfirmScreenState extends State<ReservationConfirmScreen> {
                 ),
                 const SizedBox(height: 6),
 
-                // List / Sections
+                // Lists: Pending (top) + Confirmed (bottom)
                 Expanded(
-                  child: _rows.isEmpty
-                      ? const Center(child: Text('No pending reservations.'))
+                  child: (_rows.isEmpty && _confirmedRows.isEmpty)
+                      ? const Center(child: Text('No reservations to show.'))
                       : ListView(
                           children: [
+                            // ------ Pending Section ------
                             if (_selectedDate != null) ...[
-                              // filtered: single list
+                              if (_rows.isNotEmpty) _SectionHeader('Pending'),
                               ..._rows.map((r) => _ReservationCard(
                                     row: r,
                                     userCache: _userCache,
@@ -384,8 +428,9 @@ class _ReservationConfirmScreenState extends State<ReservationConfirmScreen> {
                                         _updateStatus(r, 'rejected'),
                                   )),
                             ] else ...[
-                              if (today.isNotEmpty) _SectionHeader('Today'),
-                              ...today.map((r) => _ReservationCard(
+                              if (todayPending.isNotEmpty)
+                                _SectionHeader('Pending • Today'),
+                              ...todayPending.map((r) => _ReservationCard(
                                     row: r,
                                     userCache: _userCache,
                                     processingId: _processingId,
@@ -394,8 +439,9 @@ class _ReservationConfirmScreenState extends State<ReservationConfirmScreen> {
                                     onReject: () =>
                                         _updateStatus(r, 'rejected'),
                                   )),
-                              if (later.isNotEmpty) _SectionHeader('Later'),
-                              ...later.map((r) => _ReservationCard(
+                              if (laterPending.isNotEmpty)
+                                _SectionHeader('Pending • Later'),
+                              ...laterPending.map((r) => _ReservationCard(
                                     row: r,
                                     userCache: _userCache,
                                     processingId: _processingId,
@@ -404,6 +450,42 @@ class _ReservationConfirmScreenState extends State<ReservationConfirmScreen> {
                                     onReject: () =>
                                         _updateStatus(r, 'rejected'),
                                   )),
+                            ],
+
+                            // Divider between sections if both have content
+                            if ((_rows.isNotEmpty &&
+                                    _confirmedRows.isNotEmpty) ||
+                                (_rows.isEmpty && _confirmedRows.isNotEmpty))
+                              const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 8),
+                                child: Divider(height: 1),
+                              ),
+
+                            // ------ Confirmed Section (always bottom) ------
+                            if (_selectedDate != null) ...[
+                              if (_confirmedRows.isNotEmpty)
+                                _SectionHeader('Confirmed'),
+                              ..._confirmedRows.map((r) => _ConfirmedCard(
+                                    row: r,
+                                    userCache: _userCache,
+                                  )),
+                            ] else ...[
+                              if (todayConfirmed.isNotEmpty)
+                                _SectionHeader('Confirmed • Today'),
+                              ...todayConfirmed.map(
+                                (r) => _ConfirmedCard(
+                                  row: r,
+                                  userCache: _userCache,
+                                ),
+                              ),
+                              if (laterConfirmed.isNotEmpty)
+                                _SectionHeader('Confirmed • Later'),
+                              ...laterConfirmed.map(
+                                (r) => _ConfirmedCard(
+                                  row: r,
+                                  userCache: _userCache,
+                                ),
+                              ),
                             ],
                           ],
                         ),
@@ -565,6 +647,118 @@ class _ReservationCard extends StatelessWidget {
                 ),
               ],
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ConfirmedCard extends StatelessWidget {
+  final Map<String, dynamic> row;
+  final Map<String, Map<String, dynamic>> userCache;
+
+  const _ConfirmedCard({
+    required this.row,
+    required this.userCache,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final guests = row['guests'];
+    final dateStr = row['date']?.toString();
+    final timeStr = row['time']?.toString();
+    final note = row['note']?.toString();
+    final uid = row['user_id']?.toString();
+
+    String prettyDate = dateStr ?? '';
+    String prettyTime = timeStr ?? '';
+    try {
+      if (dateStr != null) {
+        final d = DateFormat('yyyy-MM-dd').parse(dateStr);
+        prettyDate = DateFormat('EEE, MMM d').format(d);
+      }
+      if (timeStr != null) {
+        final fmt =
+            timeStr.length == 5 ? DateFormat('HH:mm') : DateFormat('HH:mm:ss');
+        final t = fmt.parse(timeStr);
+        prettyTime = DateFormat('h:mm a').format(t);
+      }
+    } catch (_) {}
+
+    final user = uid != null ? userCache[uid] : null;
+    final name = user?['name']?.toString();
+    final contact = user?['contact']?.toString();
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // top row (date/time + guests + confirmed chip)
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '$prettyDate • $prettyTime',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(14),
+                    color: Theme.of(context).colorScheme.surfaceVariant,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.group_outlined, size: 16),
+                      const SizedBox(width: 6),
+                      Text('$guests'),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Chip(
+                  label: const Text('Confirmed'),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+
+            if (name != null || contact != null) ...[
+              Row(
+                children: [
+                  const Icon(Icons.person_outline, size: 16),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      [name, contact]
+                          .where((e) => (e ?? '').toString().isNotEmpty)
+                          .join(' • '),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+            ],
+
+            if (note != null && note.trim().isNotEmpty) ...[
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.edit_note_outlined, size: 16),
+                  const SizedBox(width: 6),
+                  Expanded(child: Text(note)),
+                ],
+              ),
+              const SizedBox(height: 6),
+            ],
           ],
         ),
       ),
