@@ -4,7 +4,8 @@ import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 
 class DirectionsHelper {
-  static const String _apiKey = 'AlzaSyjPP-Pa7a3eMKKtZzK7WZAMuXa8PrfrsED';
+  // static const String _apiKey = 'AlzaSyjPP-Pa7a3eMKKtZzK7WZAMuXa8PrfrsED';
+  static const String _apiKey = 'AlzaSyepTEHhsQBV6Uq8C8B67-sVj5SOdxmomAx';
 
   static Future<void> openGoogleMapsDirections(
       double destLat, double destLng) async {

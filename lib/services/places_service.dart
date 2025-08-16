@@ -2,8 +2,10 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class PlacesService {
+  // final String apiKey =
+  //     'AlzaSyjPP-Pa7a3eMKKtZzK7WZAMuXa8PrfrsED'; // use your real key
   final String apiKey =
-      'AlzaSyjPP-Pa7a3eMKKtZzK7WZAMuXa8PrfrsED'; // use your real key
+      'AlzaSyepTEHhsQBV6Uq8C8B67-sVj5SOdxmomAx'; // use your real key
 
   Future<List<Map<String, dynamic>>> searchNearbyRestaurants({
     required double lat,
