@@ -21,6 +21,10 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
   List<Map<String, dynamic>> _menuItems = [];
   String? _userType;
 
+  // Aggregated (denormalized via trigger) values read from restaurants table
+  double? _avgRating; // restaurants.rating
+  int _ratingCount = 0; // restaurants.rating_count
+
   // Resolved cover image URL (either Supabase public/signed or Google Places)
   String? _coverUrl;
 
@@ -28,11 +32,21 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
   String get restaurantId =>
       widget.restaurant['id'] ?? widget.restaurant['place_id'] ?? '';
 
+  // ---------- Truncate helper: one decimal, rounds down ----------
+  String formatTruncate(double value) {
+    final truncated = (value * 10).floor() / 10.0; // keep exactly one decimal
+    return truncated.toStringAsFixed(1);
+  }
+  // ---------------------------------------------------------------
+
   @override
   void initState() {
     super.initState();
     _loadUserType();
-    if (isSupabaseRestaurant) _loadMenu();
+    if (isSupabaseRestaurant) {
+      _loadMenu();
+      _loadAggregates(); // read restaurants.rating & rating_count
+    }
     _checkFavorite();
     _prepareCoverImage();
   }
@@ -40,7 +54,6 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
   // ----------------- Helpers -----------------
 
   String _publicUrl(String bucket, String path) {
-    // If DB already stores a full URL, just use it
     if (path.startsWith('http://') || path.startsWith('https://')) return path;
     return _supabase.storage.from(bucket).getPublicUrl(path);
   }
@@ -50,10 +63,11 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
     if (photos is List && photos.isNotEmpty) {
       final ref = photos[0]['photo_reference'];
       if (ref != null && ref.toString().isNotEmpty) {
-        const apiKey = 'YOUR_GOOGLE_API_KEY'; // TODO: move to secure config
-        return 'https://maps.googleapis.com/maps/api/place/photo'
+        const apiKey =
+            'AlzaSyepTEHhsQBV6Uq8C8B67-sVj5SOdxmomAx'; // TODO: move to secure config
+        return 'https://maps.gomaps.pro/maps/api/place/photo'
             '?maxwidth=1200'
-            '&photo_reference=$ref' // <-- correct param
+            '&photo_reference=$ref'
             '&key=$apiKey';
       }
     }
@@ -64,25 +78,22 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
     final r = widget.restaurant;
 
     if (isSupabaseRestaurant) {
-      // Try your likely field names for the stored path (adjust if needed)
-      final dynamic raw = r['image_path'] ?? r['cover_image'] ?? r['imageUrl'];
+      // Accept either a relative path or a full public URL
+      final dynamic raw = r['image_url'] ??
+          r['image_path'] ??
+          r['cover_image'] ??
+          r['imageUrl'];
       if (raw != null) {
         final path = raw.toString();
         if (path.isNotEmpty) {
-          setState(() {
-            _coverUrl = _publicUrl('restaurant-images', path);
-          });
+          setState(() => _coverUrl = _publicUrl('restaurant-images', path));
           return;
         }
       }
-      // No path provided; leave _coverUrl null
       return;
     } else {
-      // Google Places based restaurant
       final url = _googlePlacesPhotoUrl(r);
-      if (url != null) {
-        setState(() => _coverUrl = url);
-      }
+      if (url != null) setState(() => _coverUrl = url);
     }
   }
 
@@ -112,6 +123,20 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
     }
 
     setState(() => _menuItems = items);
+  }
+
+  // Load aggregated rating from restaurants (denormalized via trigger)
+  Future<void> _loadAggregates() async {
+    final row = await _supabase
+        .from('restaurants')
+        .select('rating, rating_count')
+        .eq('id', restaurantId)
+        .maybeSingle();
+
+    setState(() {
+      _avgRating = (row?['rating'] as num?)?.toDouble();
+      _ratingCount = (row?['rating_count'] as int?) ?? 0;
+    });
   }
 
   Future<void> _checkFavorite() async {
@@ -211,13 +236,33 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
     );
   }
 
+  // Simple star row for a double value (supports halves)
+  Widget _buildStars(double value) {
+    final full = value.floor();
+    final frac = value - full;
+    final hasHalf = frac >= 0.25 && frac < 0.75;
+    final empty = 5 - full - (hasHalf ? 1 : 0);
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (int i = 0; i < full; i++)
+          const Icon(Icons.star, size: 18, color: Colors.amber),
+        if (hasHalf) const Icon(Icons.star_half, size: 18, color: Colors.amber),
+        for (int i = 0; i < empty; i++)
+          const Icon(Icons.star_border, size: 18, color: Colors.amber),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final r = widget.restaurant;
     final name = r['name'] ?? 'Unnamed';
     final address = r['address'] ?? r['vicinity'] ?? 'Unknown';
-    final rating = (r['rating'] ?? 0).toString();
-    final description = r['description'] ?? 'No description available.';
+
+    // Google rating (for non-Supabase restaurants)
+    final googleRating = (r['rating'] as num?)?.toDouble();
 
     // Build gallery URLs from loaded menu items
     final menuUrls = _menuItems
@@ -259,13 +304,39 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
               style:
                   const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
+
+          // ----------------- Rating Row -----------------
           Row(
             children: [
-              const Icon(Icons.star, color: Colors.orange, size: 20),
-              const SizedBox(width: 4),
-              Text('Rating: $rating'),
+              if (isSupabaseRestaurant)
+                if (_avgRating != null && _ratingCount > 0) ...[
+                  _buildStars(_avgRating!),
+                  const SizedBox(width: 8),
+                  Text(
+                    "${formatTruncate(_avgRating!)} ($_ratingCount)",
+                    style: const TextStyle(fontSize: 13, color: Colors.black54),
+                  ),
+                ] else
+                  const Text(
+                    "No ratings yet",
+                    style: TextStyle(fontSize: 13, color: Colors.black54),
+                  )
+              else if (googleRating != null) ...[
+                _buildStars(googleRating),
+                const SizedBox(width: 8),
+                Text(
+                  formatTruncate(googleRating),
+                  style: const TextStyle(fontSize: 13, color: Colors.black54),
+                ),
+              ] else
+                const Text(
+                  "No ratings yet",
+                  style: TextStyle(fontSize: 13, color: Colors.black54),
+                ),
             ],
           ),
+          // ----------------------------------------------
+
           const SizedBox(height: 8),
           Row(
             children: [
@@ -275,7 +346,7 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          Text(description),
+          Text(r['description'] ?? 'No description available.'),
           const SizedBox(height: 20),
 
           // MENU SECTION (Supabase restaurants)
@@ -357,11 +428,16 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
             ),
             const SizedBox(height: 30),
 
-            // Reviews (visible to all; form visible since you allowed all auth)
-            ReviewForm(restaurantId: restaurantId),
+            // Reviews + Form
+            ReviewForm(
+              restaurantId: restaurantId,
+              onSubmitted: _loadAggregates, // refresh after new review
+            ),
             const SizedBox(height: 20),
-            const Text("Customer Reviews",
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const Text(
+              "Customer Reviews",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: 10),
             ReviewList(restaurantId: restaurantId),
           ],

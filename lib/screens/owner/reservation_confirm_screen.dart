@@ -148,7 +148,7 @@ class _ReservationConfirmScreenState extends State<ReservationConfirmScreen> {
             _confirmedRows.add(row);
             _sortRows(_confirmedRows);
           } else {
-            // ignore other statuses here
+            // ignore served/rejected/cancelled/etc in lists
           }
 
           await _hydrateUsers([row['user_id']?.toString() ?? '']);
@@ -178,7 +178,8 @@ class _ReservationConfirmScreenState extends State<ReservationConfirmScreen> {
             } else if (status == 'confirmed') {
               _confirmedRows.add(row);
               _sortRows(_confirmedRows);
-            } // else (rejected/other) don't show
+            }
+            // served/rejected/cancelled not shown
           }
 
           if (mounted) setState(() {});
@@ -254,7 +255,15 @@ class _ReservationConfirmScreenState extends State<ReservationConfirmScreen> {
           .from('reservations')
           .update({'status': status}).eq('id', id);
 
-      // ---- OneSignal push via Edge Function ----
+      // Optimistic UI: remove from lists if terminal state
+      final terminal = {'served', 'rejected', 'cancelled'};
+      if (terminal.contains(status)) {
+        _rows.removeWhere((e) => e['id'] == id);
+        _confirmedRows.removeWhere((e) => e['id'] == id);
+        setState(() {});
+      }
+
+      // ---- OneSignal push via Edge Function (optional) ----
       try {
         final restaurant = _restaurantName ?? 'our restaurant';
         final dateStr = (r['date']?.toString() ?? '');
@@ -276,30 +285,46 @@ class _ReservationConfirmScreenState extends State<ReservationConfirmScreen> {
           }
         } catch (_) {}
 
-        final title = status == 'confirmed'
-            ? 'Reservation confirmed'
-            : 'Reservation rejected';
-        final body = status == 'confirmed'
-            ? 'See you at $restaurant on $prettyDate at $prettyTime.'
-            : 'Sorry—your booking at $restaurant was rejected.';
+        String? title;
+        String? body;
+        if (status == 'confirmed') {
+          title = 'Reservation confirmed';
+          body = 'See you at $restaurant on $prettyDate at $prettyTime.';
+        } else if (status == 'rejected') {
+          title = 'Reservation rejected';
+          body = 'Sorry—your booking at $restaurant was rejected.';
+        } else if (status == 'served') {
+          title = 'Thanks for dining with us!';
+          body = 'Hope you enjoyed your time at $restaurant.';
+        } else if (status == 'cancelled') {
+          title = 'Reservation cancelled';
+          body = 'Your booking at $restaurant has been cancelled.';
+        }
 
-        await _supabase.functions.invoke('push-onesignal', body: {
-          'userIds': [r['user_id']], // must match OneSignal.login(uid)
-          'title': title,
-          'body': body,
-          'data': {
-            'reservation_id': r['id'].toString(),
-            'restaurant_id': r['restaurant_id'].toString(),
-            'status': status,
-            'route': '/customer/reservations',
-          },
-        });
+        if (title != null && body != null) {
+          await _supabase.functions.invoke('push-onesignal', body: {
+            'userIds': [r['user_id']],
+            'title': title,
+            'body': body,
+            'data': {
+              'reservation_id': r['id'].toString(),
+              'restaurant_id': r['restaurant_id'].toString(),
+              'status': status,
+              'route': '/customer/reservations',
+            },
+          });
+        }
       } catch (e) {
         debugPrint('push-onesignal error: $e');
       }
-      // -----------------------------------------
+      // -----------------------------------------------------
 
-      _toast('Reservation ${status == 'confirmed' ? 'confirmed' : 'rejected'}');
+      String msg = 'Updated';
+      if (status == 'confirmed') msg = 'Reservation confirmed';
+      if (status == 'rejected') msg = 'Reservation rejected';
+      if (status == 'served') msg = 'Marked as served';
+      if (status == 'cancelled') msg = 'Reservation cancelled';
+      _toast(msg);
     } on PostgrestException catch (e) {
       _toast('Error: ${e.message}');
     } catch (e) {
@@ -316,8 +341,7 @@ class _ReservationConfirmScreenState extends State<ReservationConfirmScreen> {
     final picked = await showDatePicker(
       context: context,
       initialDate: _selectedDate ?? now,
-      firstDate: now
-          .subtract(const Duration(days: 1)), // allow today/yesterday if needed
+      firstDate: now.subtract(const Duration(days: 1)),
       lastDate: now.add(const Duration(days: 180)),
       helpText: 'Filter by date',
     );
@@ -468,6 +492,10 @@ class _ReservationConfirmScreenState extends State<ReservationConfirmScreen> {
                               ..._confirmedRows.map((r) => _ConfirmedCard(
                                     row: r,
                                     userCache: _userCache,
+                                    processingId: _processingId,
+                                    onServed: () => _updateStatus(r, 'served'),
+                                    onCancel: () =>
+                                        _updateStatus(r, 'cancelled'),
                                   )),
                             ] else ...[
                               if (todayConfirmed.isNotEmpty)
@@ -476,6 +504,9 @@ class _ReservationConfirmScreenState extends State<ReservationConfirmScreen> {
                                 (r) => _ConfirmedCard(
                                   row: r,
                                   userCache: _userCache,
+                                  processingId: _processingId,
+                                  onServed: () => _updateStatus(r, 'served'),
+                                  onCancel: () => _updateStatus(r, 'cancelled'),
                                 ),
                               ),
                               if (laterConfirmed.isNotEmpty)
@@ -484,6 +515,9 @@ class _ReservationConfirmScreenState extends State<ReservationConfirmScreen> {
                                 (r) => _ConfirmedCard(
                                   row: r,
                                   userCache: _userCache,
+                                  processingId: _processingId,
+                                  onServed: () => _updateStatus(r, 'served'),
+                                  onCancel: () => _updateStatus(r, 'cancelled'),
                                 ),
                               ),
                             ],
@@ -657,14 +691,23 @@ class _ReservationCard extends StatelessWidget {
 class _ConfirmedCard extends StatelessWidget {
   final Map<String, dynamic> row;
   final Map<String, Map<String, dynamic>> userCache;
+  final String? processingId;
+  final VoidCallback onServed;
+  final VoidCallback onCancel;
 
   const _ConfirmedCard({
     required this.row,
     required this.userCache,
+    required this.processingId,
+    required this.onServed,
+    required this.onCancel,
   });
 
   @override
   Widget build(BuildContext context) {
+    final id = row['id'];
+    final processing = processingId == id;
+
     final guests = row['guests'];
     final dateStr = row['date']?.toString();
     final timeStr = row['time']?.toString();
@@ -759,6 +802,36 @@ class _ConfirmedCard extends StatelessWidget {
               ),
               const SizedBox(height: 6),
             ],
+
+            // actions: Cancel + Served (horizontal)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: processing ? null : onCancel,
+                  icon: processing
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.cancel_outlined),
+                  label: Text(processing ? 'Updating…' : 'Cancel'),
+                ),
+                const SizedBox(width: 8),
+                FilledButton.icon(
+                  onPressed: processing ? null : onServed,
+                  icon: processing
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.restaurant),
+                  label: Text(processing ? 'Updating…' : 'Mark as Served'),
+                ),
+              ],
+            ),
           ],
         ),
       ),

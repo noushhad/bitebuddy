@@ -123,17 +123,10 @@ class _HomeScreenState extends State<HomeScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const Text(
-              'Your personalized restaurant feed will appear here!',
+              'Change your preference from dashboard to get tailored restaurant list in Feed',
               style: TextStyle(fontSize: 18),
               textAlign: TextAlign.center,
             ),
-            //   const SizedBox(height: 12),
-            //   if (_notificationsReady)
-            //     const Text('🔔 Notifications active',
-            //         style: TextStyle(fontSize: 12))
-            //   else
-            //     const Text('…initializing notifications',
-            //         style: TextStyle(fontSize: 12)),
           ],
         ),
       ),

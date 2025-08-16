@@ -1,9 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Permissions -->
+
+    <!-- ✅ Required Permissions -->
     <uses-permission android:name="android.permission.INTERNET"/>
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
 
@@ -13,10 +14,19 @@
         android:icon="@mipmap/ic_launcher"
         android:requestLegacyExternalStorage="true">  <!-- Only needed for API 28 and below -->
 
-        <!-- 🔑 Google Maps API Key (Required for google_maps_flutter) -->
+        <!-- 🚫 Google Maps API Key (Commented for GoMaps Pro) -->
+        <!--
         <meta-data
             android:name="com.google.android.geo.API_KEY"
-            android:value="AIzaSyCoQzkmzecrFnHY1vSeJiRdiG4YILWKK2Y" />  <!-- Replace with your full API key -->
+            android:value="YOUR_GOOGLE_MAPS_KEY_HERE" />
+        -->
+
+        <!-- 📍 GoMaps Pro specific meta-data (Optional if you store token in Dart) -->
+        <!--
+        <meta-data
+            android:name="gomaps.pro.API_KEY"
+            android:value="YOUR_GOMAPS_PRO_KEY_HERE" />
+        -->
 
         <!-- Main Activity -->
         <activity
@@ -27,9 +37,11 @@
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
+            
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme" />
+
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
@@ -42,7 +54,7 @@
             android:value="2" />
     </application>
 
-    <!-- Optional queries for processing text, used by Flutter engine -->
+    <!-- Optional queries for text processing -->
     <queries>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>

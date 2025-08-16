@@ -1,28 +1,3 @@
-// import 'package:flutter/material.dart';
-// import 'package:onesignal_flutter/onesignal_flutter.dart';
-// import '../services/auth_service.dart';
-
-// class LogoutButton extends StatelessWidget {
-//   const LogoutButton({super.key});
-
-//   @override
-//   Widget build(BuildContext context) {
-//     return IconButton(
-//       icon: const Icon(Icons.logout),
-//       onPressed: () async {
-//         // Unlink this device from the user for targeted pushes
-//         OneSignal.logout();
-
-//         await AuthService().logout();
-//         if (context.mounted) {
-//           Navigator.pushNamedAndRemoveUntil(
-//               context, '/login', (route) => false);
-//         }
-//       },
-//     );
-//   }
-// }
-
 import 'package:flutter/material.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
 import '../services/auth_service.dart';
@@ -69,13 +44,21 @@ class LogoutButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return IconButton.filledTonal(
-      icon: const Icon(Icons.logout_rounded),
-      tooltip: 'Logout',
-      style: IconButton.styleFrom(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
+    return FilledButton.icon(
       onPressed: () => _handleLogout(context),
+      icon: const Icon(Icons.logout_rounded, color: Colors.white),
+      label: const Text(
+        "Logout",
+        style: TextStyle(
+          fontWeight: FontWeight.w600,
+          color: Colors.white,
+        ),
+      ),
+      style: FilledButton.styleFrom(
+        backgroundColor: Colors.redAccent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      ),
     );
   }
 }

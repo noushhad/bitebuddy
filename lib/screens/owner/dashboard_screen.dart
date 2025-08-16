@@ -63,16 +63,16 @@ class OwnerDashboardScreen extends StatelessWidget {
               title: const Text('Edit Menu'),
               onTap: () => Navigator.pushNamed(context, '/owner/menu'),
             ),
-            ListTile(
-              leading: const Icon(Icons.favorite),
-              title: const Text('Favorites'),
-              onTap: () => Navigator.pushNamed(context, '/favorites'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.settings),
-              title: const Text('Preferences'),
-              onTap: () => Navigator.pushNamed(context, '/preferences'),
-            ),
+            // ListTile(
+            //   leading: const Icon(Icons.favorite),
+            //   title: const Text('Favorites'),
+            //   onTap: () => Navigator.pushNamed(context, '/favorites'),
+            // ),
+            // ListTile(
+            //   leading: const Icon(Icons.settings),
+            //   title: const Text('Preferences'),
+            //   onTap: () => Navigator.pushNamed(context, '/preferences'),
+            // ),
             const Divider(),
             const LogoutButton(),
           ],
