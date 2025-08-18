@@ -255,6 +255,28 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
     );
   }
 
+  // --------- Tags helper (reads `tags` from restaurants row) ---------
+  List<String> _extractTags(Map r) {
+    final t = r['tags'];
+    if (t == null) return const [];
+    if (t is List) {
+      return t
+          .map((e) => e?.toString() ?? '')
+          .map((s) => s.trim())
+          .where((s) => s.isNotEmpty)
+          .toList();
+    }
+    if (t is String) {
+      return t
+          .split(',')
+          .map((s) => s.trim())
+          .where((s) => s.isNotEmpty)
+          .toList();
+    }
+    return const [];
+  }
+  // -------------------------------------------------------------------
+
   @override
   Widget build(BuildContext context) {
     final r = widget.restaurant;
@@ -270,6 +292,9 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
         .where((u) => u != null && u.isNotEmpty)
         .cast<String>()
         .toList();
+
+    // Tags (only for Supabase restaurants)
+    final tags = isSupabaseRestaurant ? _extractTags(r) : const <String>[];
 
     return Scaffold(
       appBar: AppBar(
@@ -347,7 +372,33 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
           ),
           const SizedBox(height: 16),
           Text(r['description'] ?? 'No description available.'),
-          const SizedBox(height: 20),
+          const SizedBox(height: 12),
+
+          // ----------------- Tags Section -----------------
+          if (tags.isNotEmpty) ...[
+            const Text('Tags',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: tags
+                  .map(
+                    (tag) => Chip(
+                      label: Text(tag),
+                      backgroundColor:
+                          Theme.of(context).colorScheme.surface, // subtle
+                      shape: StadiumBorder(
+                        side: BorderSide(color: Colors.grey.shade300),
+                      ),
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                  )
+                  .toList(),
+            ),
+            const SizedBox(height: 20),
+          ],
+          // -------------------------------------------------
 
           // MENU SECTION (Supabase restaurants)
           if (isSupabaseRestaurant) ...[

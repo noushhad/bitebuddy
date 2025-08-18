@@ -32,6 +32,7 @@ class _RestaurantDetailsFormState extends State<RestaurantDetailsForm> {
     'Mexican',
     'Café',
     'Fine Dining',
+    'Children Friendly',
   ];
 
   File? _selectedImage;

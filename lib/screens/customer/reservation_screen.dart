@@ -44,7 +44,7 @@ class _ReservationScreenState extends State<ReservationScreen> {
   Future<void> _pickTime() async {
     final picked = await showTimePicker(
       context: context,
-      initialTime: _selectedTime ?? const TimeOfDay(hour: 19, minute: 0),
+      initialTime: _selectedTime ?? const TimeOfDay(hour: 9, minute: 0),
       helpText: 'Select reservation time',
     );
     if (picked != null) setState(() => _selectedTime = picked);
@@ -70,7 +70,7 @@ class _ReservationScreenState extends State<ReservationScreen> {
     final n = int.tryParse(v.trim());
     if (n == null) return 'Enter a valid number';
     if (n < 1) return 'At least 1 guest';
-    if (n > 20) return 'Please contact the restaurant for large parties';
+    if (n > 15) return 'Please contact the restaurant for large parties';
     return null;
   }
 
