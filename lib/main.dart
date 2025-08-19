@@ -26,7 +26,7 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 Future<void> initOneSignal() async {
   OneSignal.Debug.setLogLevel(OSLogLevel.verbose); // optional
-  OneSignal.initialize('cc4'); // <- replace
+  OneSignal.initialize('cc41662b-1795-432b-9ced-8f69d487a56a'); // <- replace
 
   await OneSignal.Notifications.requestPermission(true);
 
@@ -72,9 +72,10 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       navigatorKey: navigatorKey,
       theme: ThemeData(
-    useMaterial3: true,
-    colorSchemeSeed: const Color.fromARGB(255, 198, 210, 24), // pick your brand color
-  ),
+        useMaterial3: true,
+        colorSchemeSeed:
+            const Color.fromARGB(255, 198, 210, 24), // pick your brand color
+      ),
       routes: {
         '/login': (_) => const LoginScreen(),
         '/register': (_) => const RegisterScreen(),
