@@ -36,7 +36,7 @@ Practiced regression testing after bug fixes
 🧠 AI-based recommendations based on user preferences
 
 📰 Feed with restaurants & owner posts
-##🛠 Tech Stack
+##Tech Stack
 
 Frontend: Flutter (Dart)
 
