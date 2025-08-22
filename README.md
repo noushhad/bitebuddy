@@ -1,10 +1,10 @@
---##BiteBuddy 🍴
+# BiteBuddy 🍴
 
 BiteBuddy is my Final Year Project — a cross-platform restaurant discovery and reservation app built with Flutter and Supabase.
 
 What makes this project stand out: I applied Software Quality Assurance (SQA) practices throughout — writing and executing test cases, performing UI/functional testing, API testing in Postman, and documenting/reporting bugs.
----
-##🔍 My Role in SQA
+
+## 🔍 My Role in SQA
 
 Designed and executed test cases for login, search, reservation, reviews, favorites, notifications
 
@@ -17,7 +17,7 @@ Reported and tracked bugs in a Jira-style workflow
 Validated role-based access control (customer vs owner)
 
 Practiced regression testing after bug fixes
-##🚀 App Features
+## 🚀 App Features
 
 🔐 Authentication (Customer & Owner roles)
 
@@ -36,7 +36,7 @@ Practiced regression testing after bug fixes
 🧠 AI-based recommendations based on user preferences
 
 📰 Feed with restaurants & owner posts
-##Tech Stack
+## Tech Stack
 
 Frontend: Flutter (Dart)
 
@@ -48,11 +48,6 @@ Notifications: OneSignal
 
 Testing Tools: Postman, Git, Jira-style workflow
 ## Getting Started
-git clone https://github.com/<your-username>/bitebuddy.git
-cd bitebuddy
-flutter pub get
-flutter run
-
 
 This project is a starting point for a Flutter application.
 
