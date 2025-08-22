@@ -48,6 +48,11 @@ Notifications: OneSignal
 
 Testing Tools: Postman, Git, Jira-style workflow
 ## Getting Started
+git clone https://github.com/<your-username>/bitebuddy.git
+cd bitebuddy
+flutter pub get
+flutter run
+
 
 This project is a starting point for a Flutter application.
 
