@@ -54,6 +54,7 @@ dependencies:
   url_launcher: ^6.3.2
   intl: ^0.20.2
   onesignal_flutter: ^5.3.4
+  flutter_polyline_points: ^1.0.0
   
 
 dev_dependencies:

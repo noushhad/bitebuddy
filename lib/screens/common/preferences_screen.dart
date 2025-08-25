@@ -18,7 +18,15 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
     'Vegan',
     'BBQ',
     'Café',
-    'Fine Dining'
+    'Fine Dining',
+    'Fast Food',
+    'Seafood',
+    'Middle Eastern',
+    'Turkish',
+    'Thai',
+    'Japanese',
+    'Bakery/Dessert',
+    'Children Friendly'
   ];
 
   List<String> _selected = [];

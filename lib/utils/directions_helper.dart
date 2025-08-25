@@ -5,7 +5,8 @@ import 'package:url_launcher/url_launcher.dart';
 
 class DirectionsHelper {
   // static const String _apiKey = 'AlzaSyjPP-Pa7a3eMKKtZzK7WZAMuXa8PrfrsED';
-  static const String _apiKey = 'AlzaSyepTEHhsQBV6Uq8C8B67-sVj5SOdxmomAx';
+  // static const String _apiKey = 'AlzaSyepTEHhsQBV6Uq8C8B67-sVj5SOdxmomAx';
+  static const String _apiKey = 'AIzaSyCoQzkmzecrFnHY1vSeJiRdiG4YILWKK2Y';
 
   static Future<void> openGoogleMapsDirections(
       double destLat, double destLng) async {
@@ -41,7 +42,7 @@ class DirectionsHelper {
   static Future<Map<String, double>?> fetchLatLngFromPlaceId(
       String placeId) async {
     final url = Uri.parse(
-      'https://maps.gomaps.pro/maps/api/place/details/json'
+      'https://maps.googleapis.com/maps/api/place/details/json'
       '?place_id=$placeId&fields=geometry&key=$_apiKey',
     );
 

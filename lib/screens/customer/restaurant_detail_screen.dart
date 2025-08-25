@@ -4,6 +4,8 @@ import 'package:bitebuddy/screens/customer/reservation_screen.dart';
 import 'package:bitebuddy/widgets/review/review_form.dart';
 import 'package:bitebuddy/widgets/review/review_list.dart';
 import 'package:bitebuddy/utils/directions_helper.dart';
+import 'package:bitebuddy/screens/common/map_screen.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 class RestaurantDetailScreen extends StatefulWidget {
   final Map<String, dynamic> restaurant;
@@ -28,6 +30,9 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
   // Resolved cover image URL (either Supabase public/signed or Google Places)
   String? _coverUrl;
 
+  // NEW: contact from users table
+  String? _ownerContact;
+
   bool get isSupabaseRestaurant => widget.restaurant.containsKey('owner_id');
   String get restaurantId =>
       widget.restaurant['id'] ?? widget.restaurant['place_id'] ?? '';
@@ -46,6 +51,7 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
     if (isSupabaseRestaurant) {
       _loadMenu();
       _loadAggregates(); // read restaurants.rating & rating_count
+      _loadOwnerContact(); // << add contact
     }
     _checkFavorite();
     _prepareCoverImage();
@@ -64,8 +70,8 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
       final ref = photos[0]['photo_reference'];
       if (ref != null && ref.toString().isNotEmpty) {
         const apiKey =
-            'AlzaSyepTEHhsQBV6Uq8C8B67-sVj5SOdxmomAx'; // TODO: move to secure config
-        return 'https://maps.gomaps.pro/maps/api/place/photo'
+            'AIzaSyCoQzkmzecrFnHY1vSeJiRdiG4YILWKK2Y'; // TODO: move to secure config
+        return 'https://maps.googleapis.com/maps/api/place/photo'
             '?maxwidth=1200'
             '&photo_reference=$ref'
             '&key=$apiKey';
@@ -136,6 +142,22 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
     setState(() {
       _avgRating = (row?['rating'] as num?)?.toDouble();
       _ratingCount = (row?['rating_count'] as int?) ?? 0;
+    });
+  }
+
+  // NEW: load contact from users table (text)
+  Future<void> _loadOwnerContact() async {
+    final ownerId = widget.restaurant['owner_id'];
+    if (ownerId == null) return;
+
+    final row = await _supabase
+        .from('users')
+        .select('contact')
+        .eq('uid', ownerId)
+        .maybeSingle();
+
+    setState(() {
+      _ownerContact = (row?['contact'] as String?)?.trim();
     });
   }
 
@@ -370,6 +392,19 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
               Expanded(child: Text(address)),
             ],
           ),
+
+          // NEW: Contact row (shown only for Supabase restaurants when present)
+          if (isSupabaseRestaurant && (_ownerContact?.isNotEmpty ?? false)) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Icon(Icons.call, size: 20),
+                const SizedBox(width: 6),
+                Text(_ownerContact!),
+              ],
+            ),
+          ],
+
           const SizedBox(height: 16),
           Text(r['description'] ?? 'No description available.'),
           const SizedBox(height: 12),

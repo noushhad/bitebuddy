@@ -23,15 +23,22 @@ class _RestaurantDetailsFormState extends State<RestaurantDetailsForm> {
 
   List<String> _selectedCuisines = [];
   final List<String> _cuisines = const [
+    'Deshi',
+    'Italian',
     'Chinese',
     'Indian',
-    'Italian',
+    'Mexican',
     'Vegan',
     'BBQ',
-    'Deshi',
-    'Mexican',
     'Café',
     'Fine Dining',
+    'Fast Food',
+    'Seafood',
+    'Middle Eastern',
+    'Turkish',
+    'Thai',
+    'Japanese',
+    'Bakery/Dessert',
     'Children Friendly',
   ];
 

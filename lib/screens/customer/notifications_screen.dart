@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+// ⬇️ Make sure this path matches your project structure
+import 'package:bitebuddy/screens/customer/restaurant_detail_screen.dart';
+
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
 
@@ -43,7 +46,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         throw Exception('Not signed in.');
       }
 
-      // 1) Reservations for this user
+      // 1) Reservations for this user (newest first)
       final resRows = await _sb
           .from('reservations')
           .select('id, status, date, time, created_at')
@@ -128,6 +131,31 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
+  // ========= NAVIGATION =========
+  Future<void> _openRestaurantDetailById(String restaurantId) async {
+    try {
+      final row = await _sb
+          .from('restaurants')
+          .select('*')
+          .eq('id', restaurantId)
+          .single();
+
+      if (!mounted) return;
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => RestaurantDetailScreen(
+            restaurant: (row as Map<String, dynamic>),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not open restaurant: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -152,7 +180,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       if (_reservations.isEmpty)
                         const _EmptyRow(text: 'No reservation updates yet.')
                       else
-                        ..._reservations.map(_buildReservationTile),
+                        // ✅ Limit to the most recent 5
+                        ..._reservations.take(5).map(_buildReservationTile),
                       const Divider(height: 24),
                       _SectionHeader(
                         icon: Icons.campaign,
@@ -160,8 +189,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       ),
                       if (_posts.isEmpty)
                         const _EmptyRow(
-                            text:
-                                'No new posts from your favorite restaurants.')
+                          text: 'No new posts from your favorite restaurants.',
+                        )
                       else
                         ..._posts.map(_buildPostTile),
                       const Divider(height: 24),
@@ -171,8 +200,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       ),
                       if (_nearby.isEmpty)
                         _EmptyRow(
-                            text:
-                                'No new places within ~${_nearbyRadiusKm.toStringAsFixed(0)} km in the last $_recentDays days.')
+                          text:
+                              'No new places within ~${_nearbyRadiusKm.toStringAsFixed(0)} km in the last $_recentDays days.',
+                        )
                       else
                         ..._nearby.map(_buildNearbyTile),
                       const SizedBox(height: 16),
@@ -182,7 +212,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
   }
 
-  // Tiles
+  // ===== Tiles =====
   Widget _buildReservationTile(Map<String, dynamic> r) {
     final status = (r['status']?.toString() ?? '').toLowerCase();
     final title = status == 'confirmed'
@@ -211,6 +241,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   Widget _buildPostTile(Map<String, dynamic> p) {
     final String? raw = p['image_url']?.toString();
     final String? thumbUrl = _postImageUrl(raw);
+    final String? restaurantId = p['restaurant_id']?.toString();
 
     return ListTile(
       leading: thumbUrl == null
@@ -226,11 +257,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               ),
             ),
       title: Text(p['title']?.toString() ?? 'New update'),
-      subtitle: const Text('From one of your favorite restaurants'),
+      subtitle:
+          const Text('From one of your favorite restaurants • Tap to open'),
       trailing: _whenText(p['created_at']),
-      onTap: () {
-        // TODO: navigate to post/restaurant detail if you want
-      },
+      onTap: restaurantId == null || restaurantId.isEmpty
+          ? null
+          : () => _openRestaurantDetailById(restaurantId),
     );
   }
 
@@ -238,20 +270,24 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     return ListTile(
       leading: const Icon(Icons.restaurant),
       title: Text(n.name),
-      subtitle: Text('${n.distanceKm.toStringAsFixed(1)} km away'),
+      subtitle:
+          Text('${n.distanceKm.toStringAsFixed(1)} km away • Tap to open'),
       trailing: _whenText(n.updatedAt?.toIso8601String()),
+      onTap: n.id.isEmpty ? null : () => _openRestaurantDetailById(n.id),
     );
   }
 
-  // Helpers
+  // ===== Helpers =====
   Widget _whenText(dynamic iso) {
     if (iso == null) return const SizedBox.shrink();
     DateTime? dt;
     if (iso is String) dt = DateTime.tryParse(iso);
     if (iso is DateTime) dt = iso;
     if (dt == null) return const SizedBox.shrink();
-    return Text(_friendlyTime(dt),
-        style: const TextStyle(fontSize: 12, color: Colors.grey));
+    return Text(
+      _friendlyTime(dt),
+      style: const TextStyle(fontSize: 12, color: Colors.grey),
+    );
   }
 
   String _friendlyTime(DateTime dt) {
@@ -276,15 +312,16 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     return p == LocationPermission.whileInUse || p == LocationPermission.always;
   }
 
+  // ✅ Correct Haversine
   double _haversineKm(double lat1, double lon1, double lat2, double lon2) {
     const R = 6371.0;
     final dLat = _deg2rad(lat2 - lat1);
-    final dLon = _deg2rad(lat2 - lat1 == 0 ? 0 : (lon2 - lon1));
+    final dLon = _deg2rad(lon2 - lon1);
     final a = sin(dLat / 2) * sin(dLat / 2) +
         cos(_deg2rad(lat1)) *
             cos(_deg2rad(lat2)) *
-            sin((lon2 - lon1) * pi / 360) *
-            sin((lon2 - lon1) * pi / 360);
+            sin(dLon / 2) *
+            sin(dLon / 2);
     final c = 2 * atan2(sqrt(a), sqrt(1 - a));
     return R * c;
   }

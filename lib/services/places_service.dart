@@ -5,7 +5,7 @@ class PlacesService {
   // final String apiKey =
   //     'AlzaSyjPP-Pa7a3eMKKtZzK7WZAMuXa8PrfrsED'; // use your real key
   final String apiKey =
-      'AlzaSyepTEHhsQBV6Uq8C8B67-sVj5SOdxmomAx'; // use your real key
+      'AIzaSyCoQzkmzecrFnHY1vSeJiRdiG4YILWKK2Y'; // use your real key
 
   Future<List<Map<String, dynamic>>> searchNearbyRestaurants({
     required double lat,
@@ -16,7 +16,7 @@ class PlacesService {
     String cuisine = '',
   }) async {
     final buffer = StringBuffer(
-      'https://maps.gomaps.pro/maps/api/place/nearbysearch/json'
+      'https://maps.googleapis.com/maps/api/place/nearbysearch/json'
       '?location=$lat,$lng'
       '&radius=$radius'
       '&type=restaurant'
@@ -38,7 +38,7 @@ class PlacesService {
   }
 
   String getPhotoUrl(String photoRef) {
-    return 'https://maps.gomaps.pro/maps/api/place/photo'
+    return 'https://maps.googleapis.com/maps/api/place/photo'
         '?maxwidth=400'
         '&photoreference=$photoRef'
         '&key=$apiKey';
