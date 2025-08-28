@@ -32,6 +32,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   final List<String> _cuisineOptions = [
     '',
+    'Children Friendly',
     'Deshi',
     'Italian',
     'Chinese',
@@ -47,8 +48,7 @@ class _SearchScreenState extends State<SearchScreen> {
     'Turkish',
     'Thai',
     'Japanese',
-    'Bakery/Dessert',
-    'Children Friendly'
+    'Bakery/Dessert'
   ];
 
   @override

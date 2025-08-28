@@ -23,6 +23,7 @@ class _RestaurantDetailsFormState extends State<RestaurantDetailsForm> {
 
   List<String> _selectedCuisines = [];
   final List<String> _cuisines = const [
+    'Children Friendly',
     'Deshi',
     'Italian',
     'Chinese',
@@ -39,7 +40,6 @@ class _RestaurantDetailsFormState extends State<RestaurantDetailsForm> {
     'Thai',
     'Japanese',
     'Bakery/Dessert',
-    'Children Friendly',
   ];
 
   File? _selectedImage;

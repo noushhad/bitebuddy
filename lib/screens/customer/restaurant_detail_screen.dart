@@ -6,6 +6,7 @@ import 'package:bitebuddy/widgets/review/review_list.dart';
 import 'package:bitebuddy/utils/directions_helper.dart';
 import 'package:bitebuddy/screens/common/map_screen.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:url_launcher/url_launcher.dart'; // ✅ Added for dialer
 
 class RestaurantDetailScreen extends StatefulWidget {
   final Map<String, dynamic> restaurant;
@@ -23,26 +24,20 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
   List<Map<String, dynamic>> _menuItems = [];
   String? _userType;
 
-  // Aggregated (denormalized via trigger) values read from restaurants table
-  double? _avgRating; // restaurants.rating
-  int _ratingCount = 0; // restaurants.rating_count
+  double? _avgRating;
+  int _ratingCount = 0;
 
-  // Resolved cover image URL (either Supabase public/signed or Google Places)
   String? _coverUrl;
-
-  // NEW: contact from users table
   String? _ownerContact;
 
   bool get isSupabaseRestaurant => widget.restaurant.containsKey('owner_id');
   String get restaurantId =>
       widget.restaurant['id'] ?? widget.restaurant['place_id'] ?? '';
 
-  // ---------- Truncate helper: one decimal, rounds down ----------
   String formatTruncate(double value) {
-    final truncated = (value * 10).floor() / 10.0; // keep exactly one decimal
+    final truncated = (value * 10).floor() / 10.0;
     return truncated.toStringAsFixed(1);
   }
-  // ---------------------------------------------------------------
 
   @override
   void initState() {
@@ -50,14 +45,12 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
     _loadUserType();
     if (isSupabaseRestaurant) {
       _loadMenu();
-      _loadAggregates(); // read restaurants.rating & rating_count
-      _loadOwnerContact(); // << add contact
+      _loadAggregates();
+      _loadOwnerContact();
     }
     _checkFavorite();
     _prepareCoverImage();
   }
-
-  // ----------------- Helpers -----------------
 
   String _publicUrl(String bucket, String path) {
     if (path.startsWith('http://') || path.startsWith('https://')) return path;
@@ -69,8 +62,7 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
     if (photos is List && photos.isNotEmpty) {
       final ref = photos[0]['photo_reference'];
       if (ref != null && ref.toString().isNotEmpty) {
-        const apiKey =
-            'AIzaSyCoQzkmzecrFnHY1vSeJiRdiG4YILWKK2Y'; // TODO: move to secure config
+        const apiKey = 'AIzaSyCoQzkmzecrFnHY1vSeJiRdiG4YILWKK2Y';
         return 'https://maps.googleapis.com/maps/api/place/photo'
             '?maxwidth=1200'
             '&photo_reference=$ref'
@@ -84,7 +76,6 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
     final r = widget.restaurant;
 
     if (isSupabaseRestaurant) {
-      // Accept either a relative path or a full public URL
       final dynamic raw = r['image_url'] ??
           r['image_path'] ??
           r['cover_image'] ??
@@ -122,7 +113,6 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
       final m = Map<String, dynamic>.from(raw);
       final path = m['image_url'] as String?;
       if (path != null && path.isNotEmpty) {
-        // Your menu images are in the `menu-images` bucket
         m['image_url'] = _publicUrl('menu-images', path);
       }
       items.add(m);
@@ -131,7 +121,6 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
     setState(() => _menuItems = items);
   }
 
-  // Load aggregated rating from restaurants (denormalized via trigger)
   Future<void> _loadAggregates() async {
     final row = await _supabase
         .from('restaurants')
@@ -145,7 +134,6 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
     });
   }
 
-  // NEW: load contact from users table (text)
   Future<void> _loadOwnerContact() async {
     final ownerId = widget.restaurant['owner_id'];
     if (ownerId == null) return;
@@ -258,7 +246,17 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
     );
   }
 
-  // Simple star row for a double value (supports halves)
+  Future<void> _launchDialer(String number) async {
+    final Uri uri = Uri(scheme: 'tel', path: number);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open dialer')),
+      );
+    }
+  }
+
   Widget _buildStars(double value) {
     final full = value.floor();
     final frac = value - full;
@@ -277,7 +275,6 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
     );
   }
 
-  // --------- Tags helper (reads `tags` from restaurants row) ---------
   List<String> _extractTags(Map r) {
     final t = r['tags'];
     if (t == null) return const [];
@@ -297,25 +294,18 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
     }
     return const [];
   }
-  // -------------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
     final r = widget.restaurant;
     final name = r['name'] ?? 'Unnamed';
     final address = r['address'] ?? r['vicinity'] ?? 'Unknown';
-
-    // Google rating (for non-Supabase restaurants)
     final googleRating = (r['rating'] as num?)?.toDouble();
-
-    // Build gallery URLs from loaded menu items
     final menuUrls = _menuItems
         .map<String?>((m) => (m['image_url'] as String?))
         .where((u) => u != null && u.isNotEmpty)
         .cast<String>()
         .toList();
-
-    // Tags (only for Supabase restaurants)
     final tags = isSupabaseRestaurant ? _extractTags(r) : const <String>[];
 
     return Scaffold(
@@ -351,8 +341,6 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
               style:
                   const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
-
-          // ----------------- Rating Row -----------------
           Row(
             children: [
               if (isSupabaseRestaurant)
@@ -382,8 +370,6 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
                 ),
             ],
           ),
-          // ----------------------------------------------
-
           const SizedBox(height: 8),
           Row(
             children: [
@@ -393,15 +379,24 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
             ],
           ),
 
-          // NEW: Contact row (shown only for Supabase restaurants when present)
+          // ✅ Updated: tappable contact
           if (isSupabaseRestaurant && (_ownerContact?.isNotEmpty ?? false)) ...[
             const SizedBox(height: 8),
-            Row(
-              children: [
-                const Icon(Icons.call, size: 20),
-                const SizedBox(width: 6),
-                Text(_ownerContact!),
-              ],
+            InkWell(
+              onTap: () => _launchDialer(_ownerContact!),
+              child: Row(
+                children: [
+                  const Icon(Icons.call, size: 20, color: Colors.green),
+                  const SizedBox(width: 6),
+                  Text(
+                    _ownerContact!,
+                    style: const TextStyle(
+                      color: Colors.blue,
+                      decoration: TextDecoration.underline,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
 
@@ -409,7 +404,6 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
           Text(r['description'] ?? 'No description available.'),
           const SizedBox(height: 12),
 
-          // ----------------- Tags Section -----------------
           if (tags.isNotEmpty) ...[
             const Text('Tags',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
@@ -421,8 +415,7 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
                   .map(
                     (tag) => Chip(
                       label: Text(tag),
-                      backgroundColor:
-                          Theme.of(context).colorScheme.surface, // subtle
+                      backgroundColor: Theme.of(context).colorScheme.surface,
                       shape: StadiumBorder(
                         side: BorderSide(color: Colors.grey.shade300),
                       ),
@@ -433,21 +426,17 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
             ),
             const SizedBox(height: 20),
           ],
-          // -------------------------------------------------
 
-          // MENU SECTION (Supabase restaurants)
           if (isSupabaseRestaurant) ...[
             const Text('Menu',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 10),
-
             if (_menuItems.isEmpty)
               const Text('No menu items available.')
             else
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Horizontal scrollable image strip
                   SizedBox(
                     height: 150,
                     child: ListView.separated(
@@ -499,7 +488,6 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
                   ),
                 ],
               ),
-
             const SizedBox(height: 20),
             ElevatedButton.icon(
               icon: const Icon(Icons.book_online),
@@ -513,11 +501,9 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
               onPressed: _launchDirections,
             ),
             const SizedBox(height: 30),
-
-            // Reviews + Form
             ReviewForm(
               restaurantId: restaurantId,
-              onSubmitted: _loadAggregates, // refresh after new review
+              onSubmitted: _loadAggregates,
             ),
             const SizedBox(height: 20),
             const Text(
@@ -533,7 +519,6 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
   }
 }
 
-/// Fullscreen swipeable, zoomable gallery for menu images.
 class ImageGalleryScreen extends StatefulWidget {
   final List<String> urls;
   final int initialIndex;

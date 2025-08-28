@@ -10,6 +10,7 @@ class PreferencesScreen extends StatefulWidget {
 
 class _PreferencesScreenState extends State<PreferencesScreen> {
   final List<String> _allOptions = [
+    'Children Friendly',
     'Deshi',
     'Italian',
     'Chinese',
@@ -25,8 +26,7 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
     'Turkish',
     'Thai',
     'Japanese',
-    'Bakery/Dessert',
-    'Children Friendly'
+    'Bakery/Dessert'
   ];
 
   List<String> _selected = [];

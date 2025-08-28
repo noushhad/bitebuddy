@@ -123,7 +123,7 @@ class _HomeScreenState extends State<HomeScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const Text(
-              'Change your preference from dashboard to get tailored restaurant list in Feed',
+              'Hungry? Let’s find your next favorite bite! 🍽️',
               style: TextStyle(fontSize: 18),
               textAlign: TextAlign.center,
             ),

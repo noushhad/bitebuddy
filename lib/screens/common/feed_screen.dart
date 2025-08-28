@@ -51,7 +51,7 @@ class _FeedScreenState extends State<FeedScreen> {
     final allRestaurants = [...supabaseList, ...placesList];
 
     allRestaurants.shuffle();
-    final topCombined = allRestaurants.take(5).toList();
+    final topCombined = allRestaurants.take(10).toList();
 
     // 📣 Load latest posts from Supabase
     final postsQuery = await _supabase
@@ -103,12 +103,13 @@ class _FeedScreenState extends State<FeedScreen> {
                       name: r['name'] ?? '',
                       address: r['address'] ?? r['vicinity'] ?? '',
                       rating: (r['rating'] ?? 0).toDouble(),
-                      imageUrl: r['imageUrl'] ??
+                      imageUrl: r['image_url'] ??
                           (r['photos'] != null
                               ? _placesService.getPhotoUrl(
                                   r['photos'][0]['photo_reference'])
                               : ''),
                       isFavorite: false,
+                      showFavorite: false, // ✅ hide favorite button in feed
                       onTap: () => _goToDetails(r),
                     )),
                 const Divider(height: 32),

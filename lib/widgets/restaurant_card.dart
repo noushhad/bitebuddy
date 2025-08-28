@@ -6,6 +6,7 @@ class RestaurantCard extends StatelessWidget {
   final double rating;
   final String imageUrl;
   final bool isFavorite;
+  final bool showFavorite; // 🆕 control favorite button visibility
   final VoidCallback? onTap;
   final VoidCallback? onFavoriteToggle;
 
@@ -16,6 +17,7 @@ class RestaurantCard extends StatelessWidget {
     required this.rating,
     required this.imageUrl,
     this.isFavorite = false,
+    this.showFavorite = true, // 🆕 default true for details screen
     this.onTap,
     this.onFavoriteToggle,
   });
@@ -25,6 +27,7 @@ class RestaurantCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Card(
+        key: ValueKey(name),
         margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         elevation: 3,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -33,8 +36,9 @@ class RestaurantCard extends StatelessWidget {
             // Restaurant Image
             ClipRRect(
               borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(12),
-                  bottomLeft: Radius.circular(12)),
+                topLeft: Radius.circular(12),
+                bottomLeft: Radius.circular(12),
+              ),
               child: Image.network(
                 imageUrl,
                 width: 100,
@@ -56,14 +60,20 @@ class RestaurantCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(name,
-                        style: const TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.bold)),
+                    Text(
+                      name,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                     const SizedBox(height: 4),
-                    Text(address,
-                        style: TextStyle(color: Colors.grey[700], fontSize: 13),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis),
+                    Text(
+                      address,
+                      style: TextStyle(color: Colors.grey[700], fontSize: 13),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                     const SizedBox(height: 6),
                     Row(
                       children: [
@@ -77,14 +87,15 @@ class RestaurantCard extends StatelessWidget {
               ),
             ),
 
-            // Favorite icon
-            IconButton(
-              icon: Icon(
-                isFavorite ? Icons.favorite : Icons.favorite_border,
-                color: Colors.redAccent,
+            // Favorite icon (optional)
+            if (showFavorite)
+              IconButton(
+                icon: Icon(
+                  isFavorite ? Icons.favorite : Icons.favorite_border,
+                  color: Colors.redAccent,
+                ),
+                onPressed: onFavoriteToggle,
               ),
-              onPressed: onFavoriteToggle,
-            )
           ],
         ),
       ),
