@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:geolocator/geolocator.dart';
 
 import '../../services/location_service.dart';
 import '../../services/places_service.dart';
@@ -25,7 +24,6 @@ class _SearchScreenState extends State<SearchScreen> {
   List<String> _favoriteIds = [];
   bool _isLoading = false;
 
-  // Filter state
   String _selectedCuisine = '';
   bool _openNow = false;
   int _radius = 2000;
@@ -81,7 +79,7 @@ class _SearchScreenState extends State<SearchScreen> {
     try {
       final position = await _locationService.getCurrentLocation();
 
-      // 🔎 Supabase filter (kept your logic exactly)
+      // Supabase filter (kept your logic exactly)
       String query = 'ilike(name, "%$keyword%")';
       if (_selectedCuisine.isNotEmpty) {
         query += ' & tags.cs.{"$_selectedCuisine"}';
@@ -123,17 +121,17 @@ class _SearchScreenState extends State<SearchScreen> {
     final uid = _supabase.auth.currentUser?.id;
     if (uid == null) return;
 
-    final isFav = _favoriteIds.contains(restaurantId);
-    if (isFav) {
+    final exists = _favoriteIds.contains(restaurantId);
+
+    if (exists) {
       await _supabase
           .from('favorites')
           .delete()
           .match({'uid': uid, 'restaurant_id': restaurantId});
     } else {
-      await _supabase.from('favorites').insert({
-        'uid': uid,
-        'restaurant_id': restaurantId,
-      });
+      await _supabase
+          .from('favorites')
+          .insert({'uid': uid, 'restaurant_id': restaurantId});
     }
 
     await _loadFavorites();
@@ -150,126 +148,110 @@ class _SearchScreenState extends State<SearchScreen> {
           borderRadius: BorderRadius.circular(16),
           side: BorderSide(color: cs.outlineVariant),
         ),
-        child: Theme(
-          data: Theme.of(context).copyWith(
-            dividerColor: Colors.transparent,
-            splashFactory: InkRipple.splashFactory,
-            visualDensity: VisualDensity.comfortable,
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: 14),
+          childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+          title: Row(
+            children: const [
+              Icon(Icons.tune_rounded, size: 20),
+              SizedBox(width: 8),
+              Text('Filters', style: TextStyle(fontWeight: FontWeight.w700)),
+            ],
           ),
-          child: ExpansionTile(
-            tilePadding: const EdgeInsets.symmetric(horizontal: 14),
-            childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
-            title: Row(
-              children: const [
-                Icon(Icons.tune_rounded, size: 20),
-                SizedBox(width: 8),
-                Text(
-                  'Filters',
-                  style: TextStyle(fontWeight: FontWeight.w700),
+          subtitle: Text(
+            _selectedCuisine.isEmpty
+                ? 'All cuisines • ${_radius ~/ 1000} km • ${_openNow ? "Open now" : "Any time"}'
+                : '$_selectedCuisine • ${_radius ~/ 1000} km • ${_openNow ? "Open now" : "Any time"}',
+            style: TextStyle(color: cs.onSurfaceVariant),
+          ),
+          children: [
+            DropdownButtonFormField<String>(
+              value: _selectedCuisine,
+              decoration: InputDecoration(
+                labelText: 'Cuisine',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              isExpanded: true,
+              items: _cuisineOptions
+                  .map(
+                    (c) => DropdownMenuItem(
+                      value: c,
+                      child: Text(c.isEmpty ? 'All' : c),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (v) => setState(() => _selectedCuisine = v ?? ''),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<int>(
+                    value: _radius,
+                    decoration: InputDecoration(
+                      labelText: 'Radius',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    items: [1000, 2000, 3000, 5000]
+                        .map((r) => DropdownMenuItem(
+                              value: r,
+                              child: Text('${r ~/ 1000} km'),
+                            ))
+                        .toList(),
+                    onChanged: (v) => setState(() => _radius = v ?? 2000),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: cs.outlineVariant),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    height: 56,
+                    child: Row(
+                      children: [
+                        const Icon(Icons.access_time_rounded, size: 20),
+                        const SizedBox(width: 8),
+                        const Expanded(child: Text('Open now')),
+                        Switch(
+                          value: _openNow,
+                          onChanged: (v) => setState(() => _openNow = v),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ],
             ),
-            subtitle: Text(
-              _selectedCuisine.isEmpty
-                  ? 'All cuisines • ${_radius ~/ 1000} km • ${_openNow ? "Open now" : "Any time"}'
-                  : '$_selectedCuisine • ${_radius ~/ 1000} km • ${_openNow ? "Open now" : "Any time"}',
-              style: TextStyle(color: cs.onSurfaceVariant),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () => _search(_searchController.text.trim()),
+                icon: const Icon(Icons.filter_alt_rounded),
+                label: const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: Text('Apply Filters'),
+                ),
+              ),
             ),
-            children: [
-              // Cuisine (uses DropdownButtonFormField to avoid label clipping)
-              DropdownButtonFormField<String>(
-                value: _selectedCuisine,
-                decoration: InputDecoration(
-                  labelText: 'Cuisine',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  contentPadding: const EdgeInsets.fromLTRB(14, 20, 14, 14),
-                ),
-                isExpanded: true,
-                items: _cuisineOptions
-                    .map(
-                      (c) => DropdownMenuItem(
-                        value: c,
-                        child: Text(c.isEmpty ? 'All' : c),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (val) =>
-                    setState(() => _selectedCuisine = val ?? ''),
-              ),
-              const SizedBox(height: 12),
-
-              // Radius + Open now (radius also switched to DropdownButtonFormField)
-              Row(
-                children: [
-                  Expanded(
-                    child: DropdownButtonFormField<int>(
-                      value: _radius,
-                      decoration: InputDecoration(
-                        labelText: 'Radius',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 12),
-                      ),
-                      isExpanded: true,
-                      items: [1000, 2000, 3000, 5000]
-                          .map((r) => DropdownMenuItem(
-                              value: r, child: Text('${r ~/ 1000} km')))
-                          .toList(),
-                      onChanged: (val) => setState(() => _radius = val ?? 2000),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: cs.outlineVariant),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      height: 56,
-                      child: Row(
-                        children: [
-                          const Icon(Icons.access_time_rounded, size: 20),
-                          const SizedBox(width: 8),
-                          const Expanded(child: Text('Open now')),
-                          Switch(
-                            value: _openNow,
-                            onChanged: (val) => setState(() => _openNow = val),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 12),
-
-              // Apply button
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: () => _search(_searchController.text.trim()),
-                  icon: const Icon(Icons.filter_alt_rounded),
-                  label: const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 12),
-                    child: Text('Apply Filters'),
-                  ),
-                ),
-              ),
-            ],
-          ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildRestaurantSection(String title, List<Map<String, dynamic>> list,
-      {bool fromSupabase = false}) {
+  Widget _buildRestaurantSection(
+    String title,
+    List<Map<String, dynamic>> list, {
+    bool fromSupabase = false,
+  }) {
     if (list.isEmpty) return const SizedBox();
     final cs = Theme.of(context).colorScheme;
 
@@ -305,6 +287,7 @@ class _SearchScreenState extends State<SearchScreen> {
           itemBuilder: (context, index) {
             final r = list[index];
             final id = fromSupabase ? r['id'] : r['place_id'] ?? r['name'];
+
             return Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12),
               child: Card(
@@ -352,7 +335,6 @@ class _SearchScreenState extends State<SearchScreen> {
       appBar: AppBar(title: const Text('Search Restaurants')),
       body: Column(
         children: [
-          // Search bar
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
             child: TextField(
@@ -361,10 +343,8 @@ class _SearchScreenState extends State<SearchScreen> {
               onSubmitted: (v) => _search(_searchController.text.trim()),
               decoration: InputDecoration(
                 hintText: 'Search by name or keyword',
-                // prefixIcon: const Icon(Icons.search_rounded),
                 suffixIcon: IconButton(
                   icon: const Icon(Icons.search_rounded),
-                  tooltip: 'Search',
                   onPressed: () => _search(_searchController.text.trim()),
                 ),
                 filled: true,
@@ -380,16 +360,10 @@ class _SearchScreenState extends State<SearchScreen> {
                   borderRadius: BorderRadius.circular(16),
                   borderSide: BorderSide(color: cs.primary, width: 1.5),
                 ),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
               ),
             ),
           ),
-
-          // Filters
           _buildFilters(),
-
-          // Loading / content
           if (_isLoading)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 16),
@@ -401,17 +375,20 @@ class _SearchScreenState extends State<SearchScreen> {
                 ],
               ),
             ),
-
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.only(bottom: 16),
               child: Column(
                 children: [
                   _buildRestaurantSection(
-                      'Top Picks from App', _supabaseRestaurants,
-                      fromSupabase: true),
+                    'Top Picks from App',
+                    _supabaseRestaurants,
+                    fromSupabase: true,
+                  ),
                   _buildRestaurantSection(
-                      'Nearby Restaurants', _placesRestaurants),
+                    'Nearby Restaurants',
+                    _placesRestaurants,
+                  ),
                   if (!_isLoading &&
                       _supabaseRestaurants.isEmpty &&
                       _placesRestaurants.isEmpty)
@@ -423,16 +400,15 @@ class _SearchScreenState extends State<SearchScreen> {
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16),
                         ),
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
+                        child: const Padding(
+                          padding: EdgeInsets.fromLTRB(16, 18, 16, 18),
                           child: Row(
                             children: [
-                              const Icon(Icons.search_off_rounded),
-                              const SizedBox(width: 12),
+                              Icon(Icons.search_off_rounded),
+                              SizedBox(width: 12),
                               Expanded(
                                 child: Text(
                                   'No results yet. Try another keyword or adjust your filters.',
-                                  style: Theme.of(context).textTheme.bodyMedium,
                                 ),
                               ),
                             ],

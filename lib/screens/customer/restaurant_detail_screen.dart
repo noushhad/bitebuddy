@@ -6,7 +6,7 @@ import 'package:bitebuddy/widgets/review/review_list.dart';
 import 'package:bitebuddy/utils/directions_helper.dart';
 import 'package:bitebuddy/screens/common/map_screen.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:url_launcher/url_launcher.dart'; // ✅ Added for dialer
+import 'package:url_launcher/url_launcher.dart';
 
 class RestaurantDetailScreen extends StatefulWidget {
   final Map<String, dynamic> restaurant;
@@ -102,6 +102,8 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
   }
 
   Future<void> _loadMenu() async {
+    if (!isSupabaseRestaurant) return;
+
     final result = await _supabase
         .from('menu_items')
         .select('id, name, image_url')
@@ -122,6 +124,8 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
   }
 
   Future<void> _loadAggregates() async {
+    if (!isSupabaseRestaurant) return;
+
     final row = await _supabase
         .from('restaurants')
         .select('rating, rating_count')
@@ -135,6 +139,8 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
   }
 
   Future<void> _loadOwnerContact() async {
+    if (!isSupabaseRestaurant) return;
+
     final ownerId = widget.restaurant['owner_id'];
     if (ownerId == null) return;
 
@@ -150,6 +156,8 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
   }
 
   Future<void> _checkFavorite() async {
+    if (!isSupabaseRestaurant) return;
+
     final uid = _supabase.auth.currentUser?.id;
     if (uid == null) return;
 
@@ -165,6 +173,8 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
   }
 
   Future<void> _toggleFavorite() async {
+    if (!isSupabaseRestaurant) return;
+
     final uid = _supabase.auth.currentUser?.id;
     if (uid == null) return;
 
@@ -200,39 +210,29 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
     }
   }
 
-  Future<void> _launchDirections() async {
-    try {
-      final r = widget.restaurant;
-      double? lat;
-      double? lng;
+  Future<void> _launchDirectionsForPlace() async {
+    final r = widget.restaurant;
+    if (!r.containsKey('place_id')) return;
 
-      if (isSupabaseRestaurant) {
-        lat = r['latitude'];
-        lng = r['longitude'];
-      } else {
-        lat = r['geometry']?['location']?['lat'];
-        lng = r['geometry']?['location']?['lng'];
-
-        if ((lat == null || lng == null) && r['place_id'] != null) {
-          final coords =
-              await DirectionsHelper.fetchLatLngFromPlaceId(r['place_id']);
-          if (coords != null) {
-            lat = coords['lat'];
-            lng = coords['lng'];
-          }
-        }
-      }
-
-      if (lat != null && lng != null) {
-        await DirectionsHelper.openGoogleMapsDirections(lat, lng);
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Location not available')),
-        );
-      }
-    } catch (e) {
+    final coords = await DirectionsHelper.fetchLatLngFromPlaceId(r['place_id']);
+    if (coords == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error launching directions: $e')),
+        const SnackBar(content: Text('Location not available')),
+      );
+      return;
+    }
+
+    final lat = coords['lat'];
+    final lng = coords['lng'];
+
+    final Uri googleMapsUrl = Uri.parse(
+        'https://www.google.com/maps/dir/?api=1&destination=$lat,$lng&travelmode=driving');
+
+    if (await canLaunchUrl(googleMapsUrl)) {
+      await launchUrl(googleMapsUrl);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open Google Maps')),
       );
     }
   }
@@ -267,10 +267,11 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
       mainAxisSize: MainAxisSize.min,
       children: [
         for (int i = 0; i < full; i++)
-          const Icon(Icons.star, size: 18, color: Colors.amber),
-        if (hasHalf) const Icon(Icons.star_half, size: 18, color: Colors.amber),
+          const Icon(Icons.star, size: 18, color: Colors.orange),
+        if (hasHalf)
+          const Icon(Icons.star_half, size: 18, color: Colors.orange),
         for (int i = 0; i < empty; i++)
-          const Icon(Icons.star_border, size: 18, color: Colors.amber),
+          const Icon(Icons.star_border, size: 18, color: Colors.orange),
       ],
     );
   }
@@ -310,12 +311,17 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: Colors.orange,
         title: Text(name),
         actions: [
-          IconButton(
-            icon: Icon(_isFavorite ? Icons.favorite : Icons.favorite_border),
-            onPressed: _toggleFavorite,
-          )
+          if (isSupabaseRestaurant)
+            IconButton(
+              icon: Icon(
+                _isFavorite ? Icons.favorite : Icons.favorite_border,
+                color: const Color.fromARGB(255, 230, 11, 11),
+              ),
+              onPressed: _toggleFavorite,
+            )
         ],
       ),
       body: ListView(
@@ -373,20 +379,18 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
           const SizedBox(height: 8),
           Row(
             children: [
-              const Icon(Icons.location_on, size: 20),
+              const Icon(Icons.location_on, size: 20, color: Colors.orange),
               const SizedBox(width: 4),
               Expanded(child: Text(address)),
             ],
           ),
-
-          // ✅ Updated: tappable contact
           if (isSupabaseRestaurant && (_ownerContact?.isNotEmpty ?? false)) ...[
             const SizedBox(height: 8),
             InkWell(
               onTap: () => _launchDialer(_ownerContact!),
               child: Row(
                 children: [
-                  const Icon(Icons.call, size: 20, color: Colors.green),
+                  const Icon(Icons.call, size: 20, color: Colors.orange),
                   const SizedBox(width: 6),
                   Text(
                     _ownerContact!,
@@ -399,11 +403,9 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
               ),
             ),
           ],
-
           const SizedBox(height: 16),
           Text(r['description'] ?? 'No description available.'),
           const SizedBox(height: 12),
-
           if (tags.isNotEmpty) ...[
             const Text('Tags',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
@@ -415,9 +417,9 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
                   .map(
                     (tag) => Chip(
                       label: Text(tag),
-                      backgroundColor: Theme.of(context).colorScheme.surface,
+                      backgroundColor: Colors.orange.shade50,
                       shape: StadiumBorder(
-                        side: BorderSide(color: Colors.grey.shade300),
+                        side: BorderSide(color: Colors.orange.shade200),
                       ),
                       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
@@ -426,7 +428,6 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
             ),
             const SizedBox(height: 20),
           ],
-
           if (isSupabaseRestaurant) ...[
             const Text('Menu',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
@@ -447,9 +448,8 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
                         final item = _menuItems[index];
                         final url = item['image_url'] as String?;
                         final title = (item['name'] as String?) ?? '';
-                        if (url == null || url.isEmpty) {
+                        if (url == null || url.isEmpty)
                           return const SizedBox.shrink();
-                        }
                         return InkWell(
                           onTap: () => _openGallery(menuUrls, index),
                           child: SizedBox(
@@ -491,15 +491,19 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
             const SizedBox(height: 20),
             ElevatedButton.icon(
               icon: const Icon(Icons.book_online),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
               label: const Text('Make Reservation'),
               onPressed: _makeReservation,
             ),
-            const SizedBox(height: 10),
+          ] else ...[
             ElevatedButton.icon(
               icon: const Icon(Icons.directions),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
               label: const Text('Get Directions'),
-              onPressed: _launchDirections,
+              onPressed: _launchDirectionsForPlace,
             ),
+          ],
+          if (isSupabaseRestaurant) ...[
             const SizedBox(height: 30),
             ReviewForm(
               restaurantId: restaurantId,
@@ -541,6 +545,7 @@ class _ImageGalleryScreenState extends State<ImageGalleryScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: Colors.orange,
         title: Text('Menu (${widget.initialIndex + 1}/${widget.urls.length})'),
       ),
       backgroundColor: Colors.black,

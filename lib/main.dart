@@ -73,8 +73,18 @@ class MyApp extends StatelessWidget {
       navigatorKey: navigatorKey,
       theme: ThemeData(
         useMaterial3: true,
-        colorSchemeSeed:
-            const Color.fromARGB(255, 198, 210, 24), // pick your brand color
+        colorSchemeSeed: const Color.fromARGB(255, 255, 165, 0), // orange
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color.fromARGB(255, 255, 165, 0),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color.fromARGB(255, 255, 165, 0),
+          ),
+        ),
+        floatingActionButtonTheme: const FloatingActionButtonThemeData(
+          backgroundColor: Color.fromARGB(255, 255, 165, 0),
+        ),
       ),
       routes: {
         '/login': (_) => const LoginScreen(),

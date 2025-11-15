@@ -2,22 +2,22 @@ import 'package:flutter/material.dart';
 
 class RestaurantCard extends StatelessWidget {
   final String name;
-  final String address;
+  final String? address; // make nullable
   final double rating;
   final String imageUrl;
   final bool isFavorite;
-  final bool showFavorite; // 🆕 control favorite button visibility
+  final bool showFavorite;
   final VoidCallback? onTap;
   final VoidCallback? onFavoriteToggle;
 
   const RestaurantCard({
     super.key,
     required this.name,
-    required this.address,
+    this.address, // nullable now
     required this.rating,
     required this.imageUrl,
     this.isFavorite = false,
-    this.showFavorite = true, // 🆕 default true for details screen
+    this.showFavorite = true,
     this.onTap,
     this.onFavoriteToggle,
   });
@@ -68,12 +68,13 @@ class RestaurantCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Text(
-                      address,
-                      style: TextStyle(color: Colors.grey[700], fontSize: 13),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                    if (address != null)
+                      Text(
+                        address!,
+                        style: TextStyle(color: Colors.grey[700], fontSize: 13),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     const SizedBox(height: 6),
                     Row(
                       children: [
@@ -87,7 +88,6 @@ class RestaurantCard extends StatelessWidget {
               ),
             ),
 
-            // Favorite icon (optional)
             if (showFavorite)
               IconButton(
                 icon: Icon(

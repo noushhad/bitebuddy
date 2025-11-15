@@ -1,8 +1,80 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../widgets/restaurant_card.dart';
+import '../customer/restaurant_detail_screen.dart';
+import '../common/search_screen.dart';
+import '../customer/favorites_screen.dart';
+import '../common/feed_screen.dart';
 import '../../widgets/logout_button.dart';
-import '../../services/notification_service.dart'; // <-- add this
+
+/// Generic vertical card for top-rated, offers, and favorites
+class VerticalCard extends StatelessWidget {
+  final String title;
+  final String imageUrl;
+  final double? rating; // null for offers
+  final VoidCallback? onTap;
+
+  const VerticalCard({
+    super.key,
+    required this.title,
+    required this.imageUrl,
+    this.rating,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Card(
+        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        elevation: 3,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: SizedBox(
+          width: 200,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.network(
+                  imageUrl,
+                  height: 120,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, _, __) => Container(
+                    height: 120,
+                    color: Colors.grey[300],
+                    child: const Icon(Icons.restaurant, size: 50),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                style:
+                    const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              if (rating != null) ...[
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.star, size: 16, color: Colors.orange),
+                    const SizedBox(width: 4),
+                    Text(rating!.toStringAsFixed(1)),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -13,90 +85,154 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final _supabase = Supabase.instance.client;
-  bool _notificationsReady = false;
+
+  bool _isLoading = true;
+
+  List<Map<String, dynamic>> _topRated = [];
+  List<Map<String, dynamic>> _offers = [];
+  List<Map<String, dynamic>> _favorites = [];
 
   @override
   void initState() {
     super.initState();
-    _initNotifications(); // <-- add this
+    _loadAllData();
   }
 
-  Future<void> _initNotifications() async {
-    try {
-      final user = _supabase.auth.currentUser;
-      if (user == null) return;
+  Future<void> _loadAllData() async {
+    setState(() => _isLoading = true);
 
-      await NotificationService.instance.init(
-        oneSignalAppId: 'cc41662b-1795-432b-9ced-8f69d487a56a', // <-- replace
-        userId: user.id,
-        loadFavoriteRestaurantIds: () async {
-          final rows = await _supabase
-              .from('favorites')
-              .select('restaurant_id')
-              .eq('uid', user.id);
-          return rows.map<String>((r) => r['restaurant_id'].toString()).toSet();
-        },
-        nearbyRadiusKm: 3.0,
-      );
+    await Future.wait([
+      _loadTopRated(),
+      _loadOffers(),
+      _loadFavorites(),
+    ]);
 
-      setState(() => _notificationsReady = true);
-    } catch (e) {
-      // Optional: surface a silent error or log
-      debugPrint('Notification init failed: $e');
-    }
+    setState(() => _isLoading = false);
   }
 
-  /// Call this after user toggles a favorite anywhere in the app.
-  Future<void> refreshFavoriteTags() async {
-    final user = _supabase.auth.currentUser;
-    if (user == null) return;
-    final rows = await _supabase
+  Future<void> _loadTopRated() async {
+    final response = await _supabase
+        .from('restaurants')
+        .select()
+        .order('rating', ascending: false)
+        .limit(10);
+
+    _topRated = List<Map<String, dynamic>>.from(response);
+  }
+
+  Future<void> _loadOffers() async {
+    final postsQuery =
+        await _supabase.from('posts').select('*, restaurants(*)').limit(10);
+
+    final posts = List<Map<String, dynamic>>.from(postsQuery);
+
+    // Keep parent restaurant under 'restaurant'
+    _offers = posts.map((p) {
+      return {
+        'id': p['id'],
+        'title': p['title'] ?? '',
+        'image_url': p['image_url'] ?? '',
+        'restaurant': p['restaurants'], // nested restaurant object
+      };
+    }).toList();
+  }
+
+  Future<void> _loadFavorites() async {
+    final uid = _supabase.auth.currentUser?.id;
+    if (uid == null) return;
+
+    final favRows = await _supabase
         .from('favorites')
         .select('restaurant_id')
-        .eq('uid', user.id);
-    await NotificationService.instance.refreshFavoriteTags(
-      rows.map<String>((r) => r['restaurant_id'].toString()).toSet(),
+        .eq('uid', uid);
+
+    final favIds = List<String>.from(favRows.map((e) => e['restaurant_id']));
+
+    if (favIds.isEmpty) {
+      _favorites = [];
+      return;
+    }
+
+    final restaurantRows =
+        await _supabase.from('restaurants').select().inFilter('id', favIds);
+
+    _favorites = List<Map<String, dynamic>>.from(restaurantRows);
+  }
+
+  void _goToDetails(Map<String, dynamic> restaurant) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => RestaurantDetailScreen(restaurant: restaurant),
+      ),
     );
   }
 
-  @override
-  void dispose() {
-    // Clean up Realtime channels when leaving the screen
-    NotificationService.instance.dispose();
-    super.dispose();
+  Widget _sectionVertical(
+      String title, List<Map<String, dynamic>> items, bool isOffer) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Text(
+            title,
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+        SizedBox(
+          height: 230,
+          child: items.isEmpty
+              ? const Center(child: Text("Nothing to show"))
+              : ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: items.length,
+                  itemBuilder: (_, i) {
+                    final r = items[i];
+
+                    if (isOffer) {
+                      final restaurant = r['restaurant'] ?? {};
+                      return VerticalCard(
+                        title: "${r['title']}\n${restaurant['name'] ?? ''}",
+                        imageUrl:
+                            r['image_url'] ?? restaurant['image_url'] ?? '',
+                        rating: null,
+                        onTap: () {
+                          if (restaurant.isNotEmpty) _goToDetails(restaurant);
+                        },
+                      );
+                    } else {
+                      return VerticalCard(
+                        title: r['name'] ?? '',
+                        imageUrl: r['image_url'] ?? '',
+                        rating: r['rating']?.toDouble(),
+                        onTap: () => _goToDetails(r),
+                      );
+                    }
+                  },
+                ),
+        ),
+      ],
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: null,
-        actions: [
-          TextButton.icon(
-            onPressed: () => Navigator.pushNamed(context, '/search'),
-            icon: const Icon(Icons.search, color: Colors.black),
-            label: const Text('Search', style: TextStyle(color: Colors.black)),
-          ),
-          TextButton.icon(
-            onPressed: () => Navigator.pushNamed(context, '/notifications'),
-            icon: const Icon(Icons.notifications, color: Colors.black),
-            label: const Text('Alerts', style: TextStyle(color: Colors.black)),
-          ),
-          TextButton.icon(
-            onPressed: () => Navigator.pushNamed(context, '/feed'),
-            icon: const Icon(Icons.feed, color: Colors.black),
-            label: const Text('Feed', style: TextStyle(color: Colors.black)),
-          ),
-        ],
-      ),
+      backgroundColor: Colors.orange[50], // 🟠 light orange background
       drawer: Drawer(
         child: ListView(
           padding: EdgeInsets.zero,
           children: [
             const DrawerHeader(
               decoration: BoxDecoration(color: Colors.deepOrange),
-              child: Text('BiteBuddy',
-                  style: TextStyle(color: Colors.white, fontSize: 24)),
+              child: Text(
+                "BiteBuddy Profile",
+                style: TextStyle(color: Colors.white, fontSize: 22),
+              ),
             ),
             ListTile(
               leading: const Icon(Icons.person),
@@ -118,18 +254,41 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
       ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Text(
-              'Hungry? Let’s find your next favorite bite! 🍽️',
-              style: TextStyle(fontSize: 18),
-              textAlign: TextAlign.center,
+      appBar: AppBar(
+        backgroundColor: Colors.deepOrange,
+        title: const Text("BiteBuddy"),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.search),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SearchScreen()),
             ),
-          ],
-        ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.rss_feed),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const FeedScreen()),
+            ),
+          ),
+        ],
       ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : RefreshIndicator(
+              onRefresh: _loadAllData,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                child: Column(
+                  children: [
+                    _sectionVertical("Top Rated Nearby", _topRated, false),
+                    _sectionVertical("Offers & Discounts", _offers, true),
+                    _sectionVertical("Your Favorites", _favorites, false),
+                  ],
+                ),
+              ),
+            ),
     );
   }
 }
