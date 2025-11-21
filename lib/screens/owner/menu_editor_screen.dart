@@ -81,8 +81,9 @@ class _MenuEditorScreenState extends State<MenuEditorScreen> {
   }
 
   Future<String> _uploadImage(String itemId, File imageFile) async {
-    // storage path: <restaurantId>/<itemId>/<uuid>.<ext>
-    final ext = p.extension(imageFile.path);
+    String rawExt = p.extension(imageFile.path);
+    String ext =
+        rawExt.isNotEmpty ? rawExt : '.jpg'; // Default to jpg if missing
     final fileName = const Uuid().v4() + ext;
     final storagePath = '${_restaurantId!}/$itemId/$fileName';
 

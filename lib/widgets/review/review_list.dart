@@ -2,9 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ReviewList extends StatefulWidget {
-  /// MUST be the Supabase restaurants.id (UUID), not a Google place_id.
-  final String restaurantId;
-  const ReviewList({super.key, required this.restaurantId});
+  final String? restaurantId; // UUID for Supabase
+  final String? placeId; // Google Place API place_id
+
+  const ReviewList({
+    super.key,
+    this.restaurantId,
+    this.placeId,
+  });
 
   @override
   State<ReviewList> createState() => _ReviewListState();
@@ -31,51 +36,74 @@ class _ReviewListState extends State<ReviewList> {
   }
 
   void _subscribeRealtime() {
-    _channel = _supabase.channel('reviews-restaurant-${widget.restaurantId}');
-    _channel!
-        .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: 'reviews',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'restaurant_id',
-            value: widget.restaurantId,
-          ),
-          callback: (_) {
-            setState(() => _future = _load());
-          },
-        )
-        .subscribe();
+    if (widget.restaurantId != null && widget.restaurantId!.isNotEmpty) {
+      _channel = _supabase.channel('reviews-restaurant-${widget.restaurantId}');
+      _channel!
+          .onPostgresChanges(
+            event: PostgresChangeEvent.all,
+            schema: 'public',
+            table: 'reviews',
+            filter: PostgresChangeFilter(
+              type: PostgresChangeFilterType.eq,
+              column: 'restaurant_id',
+              value: widget.restaurantId!,
+            ),
+            callback: (_) {
+              setState(() => _future = _load());
+            },
+          )
+          .subscribe();
+    } else if (widget.placeId != null && widget.placeId!.isNotEmpty) {
+      _channel = _supabase.channel('reviews-place-${widget.placeId}');
+      _channel!
+          .onPostgresChanges(
+            event: PostgresChangeEvent.all,
+            schema: 'public',
+            table: 'reviews',
+            filter: PostgresChangeFilter(
+              type: PostgresChangeFilterType.eq,
+              column: 'place_id',
+              value: widget.placeId!,
+            ),
+            callback: (_) {
+              setState(() => _future = _load());
+            },
+          )
+          .subscribe();
+    }
   }
 
   Future<List<Map<String, dynamic>>> _load() async {
     setState(() => _error = null);
     try {
-      // 1) Load reviews (no join)
-      final rows = await _supabase
+      var builder = _supabase
           .from('reviews')
-          .select('id, rating, review_text, created_at, customer_id')
-          .eq('restaurant_id', widget.restaurantId)
-          .order('created_at', ascending: false);
+          .select('id, rating, review_text, created_at, customer_id');
 
+      // Ensure only non-null, non-empty is used
+      if (widget.restaurantId != null && widget.restaurantId!.isNotEmpty) {
+        builder = builder.eq('restaurant_id', widget.restaurantId!);
+      } else if (widget.placeId != null && widget.placeId!.isNotEmpty) {
+        builder = builder.eq('place_id', widget.placeId!);
+      }
+
+      final rows = await builder.order('created_at', ascending: false);
       final reviews = List<Map<String, dynamic>>.from(rows);
 
-      // 2) Collect unique customer ids
+      // Collect unique customer ids (non-null, non-empty)
       final ids = reviews
-          .map((r) => r['customer_id'])
-          .where((v) => v != null && (v as String).isNotEmpty)
+          .map((r) => r['customer_id'] as String?)
+          .where((v) => v != null && v.isNotEmpty)
           .cast<String>()
           .toSet()
           .toList();
 
-      // 3) Fetch user names in one batch (using inFilter for older SDKs)
       final Map<String, String> nameByUid = {};
       if (ids.isNotEmpty) {
         final users = await _supabase
             .from('users')
             .select('uid, name')
-            .inFilter('uid', ids); // <- use inFilter instead of in_()
+            .inFilter('uid', ids);
 
         for (final u in users) {
           final uid = u['uid'] as String?;
@@ -87,7 +115,6 @@ class _ReviewListState extends State<ReviewList> {
         }
       }
 
-      // 4) Attach writerName to each review
       for (final r in reviews) {
         final uid = r['customer_id'] as String?;
         r['writer_name'] =
