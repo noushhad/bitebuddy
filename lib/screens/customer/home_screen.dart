@@ -7,6 +7,7 @@ import '../common/search_screen.dart';
 import '../customer/favorites_screen.dart';
 import '../common/feed_screen.dart';
 import '../../widgets/logout_button.dart';
+import '../customer/notifications_screen.dart';
 
 /// Generic vertical card for top-rated, offers, and favorites
 class VerticalCard extends StatelessWidget {
@@ -263,6 +264,13 @@ class _HomeScreenState extends State<HomeScreen> {
             onPressed: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const SearchScreen()),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.notifications),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const NotificationsScreen()),
             ),
           ),
           IconButton(
